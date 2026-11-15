@@ -1,0 +1,31 @@
+
+.pick { padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.pick h2 { font: 600 1.05rem var(--display); color: var(--gold); margin: 0; }
+.pick .hint { flex-basis: 100%; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--steel); border-radius: 999px; padding: 5px 12px;
+  background: var(--panel); color: var(--ice); font-size: .95rem; cursor: pointer; }
+.chip:has(input:checked) { border-color: var(--frost); background: #173a5c; color: #fff; }
+.chip input { accent-color: var(--frost); margin: 0; }
+.holders { color: var(--mist); font-size: .78rem; white-space: nowrap; }
+.line { flex-wrap: wrap; }
+.line .nm { flex: 1 1 120px; }
+.line select { flex: 1 1 100%; background: var(--abyss); color: var(--ice); border: 1px solid var(--steel); border-radius: 4px; padding: 4px 6px; font-size: .85rem; min-width: 0; }
+.line .from { flex: 1 1 100%; color: var(--mist); font-size: .85rem; }
+details.share { padding: 12px 16px; }
+details.share summary { cursor: pointer; font: 600 1.05rem var(--display); color: var(--gold); }
+details.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .85rem/1.35 ui-monospace, Consolas, monospace; }
+#sharePrep { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+#sharePrep[hidden] { display: none; }
+#sharePrep p { margin: 0; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.preview { max-height: 280px; overflow: auto; border: 1px solid var(--steel); border-radius: 4px; background: var(--abyss); padding: 6px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px 10px; }
+.preview label { display: flex; gap: 6px; align-items: baseline; color: var(--ice); font-size: .9rem; padding: 2px 4px; border-radius: 3px; }
+.preview label:hover { background: var(--panel-2); }
+.preview .n { color: var(--mist); font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: right; }
+.codebox { border: 1px solid var(--gold); border-radius: 4px; padding: 10px 12px; background: rgba(255,209,0,.07); }
+.codebox b { font: 700 1.25rem ui-monospace, Consolas, monospace; color: var(--gold); letter-spacing: .06em; }
+#shareMsg { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.req { border-top: 1px solid var(--steel); padding: 10px 0; }
+.req h3 { font: 600 1rem var(--display); color: var(--frost); margin: 0 0 4px; }
+.req pre { margin: 6px 0; }

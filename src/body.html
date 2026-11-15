@@ -1,0 +1,114 @@
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Iron Vault</h1>
+      <p class="sub">Community stock for <b>ChromieCraft challenge</b> characters</p>
+    </div>
+    <div class="stats">
+      <span class="pill" id="modePill" hidden>Demo data: database not connected</span>
+      <div class="stat"><small>Donors</small><span id="statVaults">0</span></div>
+      <div class="stat"><small>In stock</small><span id="statStacks">0</span> stacks</div>
+    </div>
+  </header>
+
+  <section class="frame pick" aria-labelledby="pickTitle">
+    <h2 id="pickTitle">Your challenges</h2>
+    <div class="chips" role="group" aria-labelledby="pickTitle">
+      <label class="chip"><input type="checkbox" id="m1"> Hardcore</label>
+      <label class="chip"><input type="checkbox" id="m2"> Ironman</label>
+      <label class="chip"><input type="checkbox" id="m4"> Bloodthirsty</label>
+    </div>
+    <p class="hint" id="pickHint"></p>
+  </section>
+
+  <div class="cols">
+    <main class="catalog">
+      <details class="how frame" open>
+        <summary>How this works</summary>
+        <div class="how-grid">
+          <div>
+            <h3>Taking items</h3>
+            <ol>
+              <li>Tick the challenges your character runs. You only see donors with the exact same set, because only they can trade with you.</li>
+              <li>Press + (or right click a row) to add an item to your request.</li>
+              <li>Enter your character name and press Prepare requests.</li>
+              <li>Whisper each donor the message you get. If they are offline, send it by in-game mail.</li>
+            </ol>
+          </div>
+          <div>
+            <h3>Giving items</h3>
+            <ol>
+              <li>Install the <a href="IronVault.zip">IronVault addon</a> (unzip it into <code>Interface/AddOns</code>) and type <code>/ivault</code> on the character that holds your spare items.</li>
+              <li>Copy the text, paste it under Share your inventory and untick anything you want to keep.</li>
+              <li>Upload. Keep the code you receive: it is the only way to update or remove your list.</li>
+            </ol>
+          </div>
+          <div>
+            <h3>Good to know</h3>
+            <p>Everything here is offered for free by other players. Quantities are as fresh as each donor's last upload, shown next to their name.</p>
+            <p>Ironman characters can equip Poor and Common gear only, so green or better gear is hidden for them.</p>
+          </div>
+        </div>
+      </details>
+
+      <input class="search" id="search" type="search" placeholder="Search items…" aria-label="Search items">
+      <div id="catalog"></div>
+
+      <details class="share frame" id="share">
+        <summary>Share your inventory</summary>
+        <p class="hint">Paste the text from <code>/ivault</code>. Nothing is uploaded until you press Upload inventory.</p>
+        <textarea class="field" id="importText" aria-label="Addon export text" placeholder="IRONVAULT1^Yourcharacter^0^2026-11-15 00:10&#10;929^0^120^1^20^^inv_potion_51^Consumable^Potion^Healing Potion"></textarea>
+        <div class="row"><button class="btn" id="readBtn" type="button">Read export</button></div>
+
+        <div id="sharePrep" hidden>
+          <p>Character: <b id="shareChar"></b> <span class="hint" id="shareDate"></span></p>
+          <div class="chips" role="group" aria-label="Challenges this character runs">
+            <label class="chip"><input type="checkbox" id="s1"> Hardcore</label>
+            <label class="chip"><input type="checkbox" id="s2"> Ironman</label>
+            <label class="chip"><input type="checkbox" id="s4"> Bloodthirsty</label>
+          </div>
+          <div class="fields">
+            <div>
+              <label for="shareNote">Note for other players (optional)</label>
+              <input class="field full" id="shareNote" type="text" maxlength="120" placeholder="Online most evenings, CET">
+            </div>
+            <div>
+              <label for="shareCode">Vault code</label>
+              <input class="field full" id="shareCode" type="text" maxlength="20" autocomplete="off" placeholder="Leave empty the first time">
+            </div>
+          </div>
+          <div class="row">
+            <span id="pickCount" class="hint"></span>
+            <button class="btn ghost" id="allBtn" type="button">Offer everything</button>
+            <button class="btn ghost" id="noneBtn" type="button">Offer nothing</button>
+          </div>
+          <div class="preview" id="sharePreview"></div>
+          <div class="row">
+            <button class="btn" id="uploadBtn" type="button">Upload inventory</button>
+            <button class="btn ghost" id="removeBtn" type="button">Remove my list</button>
+          </div>
+        </div>
+        <div id="shareMsg" aria-live="polite"></div>
+      </details>
+    </main>
+
+    <aside class="order frame" aria-labelledby="orderTitle">
+      <h2 id="orderTitle">Your request</h2>
+      <ul class="lines" id="lines"></ul>
+      <p class="hint" id="emptyHint">No items yet. Up to 8 different items per request.</p>
+      <div>
+        <label for="recipient">Your character</label>
+        <input class="field full" id="recipient" type="text" maxlength="12" autocomplete="off" placeholder="Character name">
+      </div>
+      <div id="notices" aria-live="polite"></div>
+      <button class="btn" id="confirm" type="button">Prepare requests</button>
+    </aside>
+  </div>
+</div>
+
+<dialog id="done" aria-labelledby="doneTitle">
+  <h2 id="doneTitle">Requests ready</h2>
+  <p>Paste each message in the game chat. If a donor is offline, send them the same list by in-game mail.</p>
+  <div id="requests"></div>
+  <div class="row"><button class="btn ghost" id="closeBtn" type="button">Close</button></div>
+</dialog>
