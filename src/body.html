@@ -55,55 +55,55 @@
       <input class="search" id="search" type="search" placeholder="Search items…" aria-label="Search items">
       <div id="catalog"></div>
 
-      <details class="share frame" id="share">
-        <summary>Share your inventory</summary>
-        <p class="hint">Paste the text from <code>/ivault</code>. Nothing is uploaded until you press Upload inventory.</p>
-        <textarea class="field" id="importText" aria-label="Addon export text" placeholder="IRONVAULT1^Yourcharacter^0^2026-11-15 00:10&#10;929^0^120^1^20^^inv_potion_51^Consumable^Potion^Healing Potion"></textarea>
-        <div class="row"><button class="btn" id="readBtn" type="button">Read export</button></div>
-
-        <div id="sharePrep" hidden>
-          <p>Character: <b id="shareChar"></b> <span class="hint" id="shareDate"></span></p>
-          <div class="ccard" id="shareCard" hidden></div>
-          <div class="chips" role="group" aria-label="Challenges this character runs">
-            <label class="chip"><input type="checkbox" id="s1"> Hardcore</label>
-            <label class="chip"><input type="checkbox" id="s2"> Ironman</label>
-            <label class="chip"><input type="checkbox" id="s4"> Bloodthirsty</label>
-          </div>
-          <div class="fields">
-            <div>
-              <label for="shareRace">Race (shown as an icon next to the name)</label>
-              <div class="pair">
-                <select class="field full" id="shareRace" aria-label="Race of this character"></select>
-                <select class="field full" id="shareGender" aria-label="Sex of this character"><option value="male">Male</option><option value="female">Female</option></select>
-              </div>
-            </div>
-          </div>
-          <div class="fields">
-            <div>
-              <label for="shareNote">Note for other players (optional)</label>
-              <input class="field full" id="shareNote" type="text" maxlength="120" placeholder="Online most evenings, CET">
-            </div>
-            <div>
-              <label for="shareCode">Vault code</label>
-              <input class="field full" id="shareCode" type="text" maxlength="20" autocomplete="off" placeholder="Leave empty the first time">
-            </div>
-          </div>
-          <div class="row">
-            <span id="pickCount" class="hint"></span>
-            <button class="btn ghost" id="allBtn" type="button">Offer everything</button>
-            <button class="btn ghost" id="noneBtn" type="button">Offer nothing</button>
-          </div>
-          <div class="preview" id="sharePreview"></div>
-          <div class="row">
-            <button class="btn" id="uploadBtn" type="button">Upload inventory</button>
-            <button class="btn ghost" id="removeBtn" type="button">Remove my list</button>
-          </div>
-        </div>
-        <div id="shareMsg" aria-live="polite"></div>
-      </details>
     </main>
 
     <div class="side">
+    <details class="share frame" id="share">
+      <summary>Share your inventory</summary>
+      <p class="hint">Paste the text from <code>/ivault</code>. Nothing is uploaded until you press Upload inventory.</p>
+      <textarea class="field" id="importText" aria-label="Addon export text" placeholder="IRONVAULT1^Yourcharacter^0^2026-11-15 00:10&#10;929^0^120^1^20^^inv_potion_51^Consumable^Potion^Healing Potion"></textarea>
+      <div class="row"><button class="btn" id="readBtn" type="button">Read export</button></div>
+
+      <div id="sharePrep" hidden>
+        <p>Character: <b id="shareChar"></b> <span class="hint" id="shareDate"></span></p>
+        <div class="ccard" id="shareCard" hidden></div>
+        <div class="chips" role="group" aria-label="Challenges this character runs">
+          <label class="chip"><input type="checkbox" id="s1"> Hardcore</label>
+          <label class="chip"><input type="checkbox" id="s2"> Ironman</label>
+          <label class="chip"><input type="checkbox" id="s4"> Bloodthirsty</label>
+        </div>
+        <div class="fields">
+          <div>
+            <label for="shareRace">Race (shown as an icon next to the name)</label>
+            <div class="pair">
+              <select class="field full" id="shareRace" aria-label="Race of this character"></select>
+              <select class="field full" id="shareGender" aria-label="Sex of this character"><option value="male">Male</option><option value="female">Female</option></select>
+            </div>
+          </div>
+        </div>
+        <div class="fields">
+          <div>
+            <label for="shareNote">Note for other players (optional)</label>
+            <input class="field full" id="shareNote" type="text" maxlength="120" placeholder="Online most evenings, CET">
+          </div>
+          <div>
+            <label for="shareCode">Vault code</label>
+            <input class="field full" id="shareCode" type="text" maxlength="20" autocomplete="off" placeholder="Leave empty the first time">
+          </div>
+        </div>
+        <div class="row">
+          <span id="pickCount" class="hint"></span>
+          <button class="btn ghost" id="allBtn" type="button">Offer everything</button>
+          <button class="btn ghost" id="noneBtn" type="button">Offer nothing</button>
+        </div>
+        <div class="preview" id="sharePreview"></div>
+        <div class="row">
+          <button class="btn" id="uploadBtn" type="button">Upload inventory</button>
+          <button class="btn ghost" id="removeBtn" type="button">Remove my list</button>
+        </div>
+      </div>
+      <div id="shareMsg" aria-live="polite"></div>
+    </details>
     <aside class="order frame" aria-labelledby="orderTitle">
       <h2 id="orderTitle">Your request</h2>
       <ul class="lines" id="lines"></ul>

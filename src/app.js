@@ -414,7 +414,7 @@
     });
     if (!order.length) root.appendChild(el('p', { class: 'empty', text: !state.mask ? 'Tick your challenges above.'
       : f ? 'No item matches "' + state.filter + '".'
-      : 'Nobody running ' + modeName(state.mask) + ' has shared an inventory yet. Be the first: open Share your inventory below.' }));
+      : 'Nobody running ' + modeName(state.mask) + ' has shared an inventory yet. Be the first: open Share your inventory, top right.' }));
   }
   function renderOrder() {
     var ul = $('lines'), keys = Object.keys(state.cart); ul.textContent = '';
