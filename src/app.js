@@ -8,13 +8,17 @@
   var MODES = [[1, 'Hardcore'], [2, 'Ironman'], [4, 'Bloodthirsty']];
   var NO_GEAR_SLOTS = { '': 1, INVTYPE_BAG: 1, INVTYPE_AMMO: 1, INVTYPE_QUIVER: 1 };
   var ICON_CDN = 'https://wow.zamimg.com/images/wow/icons/large/';
+  var RACE_CDN = 'https://wow.zamimg.com/images/wow/icons/medium/race_';
+  // Keys are the client's own race names in lower case ("scourge" is Undead).
+  var RACES = [['human', 'Human'], ['dwarf', 'Dwarf'], ['nightelf', 'Night Elf'], ['gnome', 'Gnome'], ['draenei', 'Draenei'],
+    ['orc', 'Orc'], ['scourge', 'Undead'], ['tauren', 'Tauren'], ['troll', 'Troll'], ['bloodelf', 'Blood Elf']];
 
   /*ICONS_DATA*/
   /*DEMO_DATA*/
 
-  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '' };
+  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', log: null };
   var share = null;            // parsed export waiting to be uploaded
-  var demoVaults = [];         // demo mode only
+  var demoVaults = [], demoLog = [];   // demo mode only
   var $ = function (id) { return document.getElementById(id); };
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -60,6 +64,31 @@
     }
     return svgUse(g);
   }
+  function raceKey(s) { s = String(s || '').toLowerCase().replace(/[^a-z]/g, ''); if (s === 'undead') s = 'scourge';
+    return RACES.some(function (r) { return r[0] === s; }) ? s : ''; }
+  function raceLabel(k) { var r = RACES.filter(function (x) { return x[0] === k; })[0]; return r ? r[1] : ''; }
+  function genderKey(s) { s = String(s || '').toLowerCase(); return s === 'female' ? 'female' : s === 'male' ? 'male' : ''; }
+  // Round race portrait from Wowhead's CDN; the character's initial when the race is unknown or the image fails.
+  function raceNode(race, gender, name) {
+    var k = raceKey(race), box = el('span', { class: 'race', 'aria-hidden': 'true' });
+    var initial = function () { box.textContent = String(name || '?').charAt(0).toUpperCase(); };
+    if (!k) { initial(); return box; }
+    box.setAttribute('title', raceLabel(k));
+    var img = el('img', { src: RACE_CDN + k + '_' + (genderKey(gender) || 'male') + '.jpg', alt: '', width: '22', height: '22', loading: 'lazy' });
+    img.addEventListener('error', function () { box.textContent = ''; initial(); });
+    box.appendChild(img); return box;
+  }
+  function whoNode(name, race, gender) { return el('span', { class: 'who' }, [raceNode(race, gender, name), document.createTextNode(name)]); }
+  function fillRaces(sel, withBlank) {
+    if (withBlank) sel.appendChild(el('option', { value: '', text: 'Not shown' }));
+    RACES.forEach(function (r) { sel.appendChild(el('option', { value: r[0], text: r[1] })); });
+  }
+  function agoFine(iso) {
+    var m = Math.floor((Date.now() - new Date(iso).getTime()) / 6e4);
+    if (m < 1) return 'just now'; if (m < 60) return m + ' min ago';
+    var h = Math.floor(m / 60); if (h < 24) return h + (h === 1 ? ' hour ago' : ' hours ago');
+    return ago(iso);
+  }
   function modeName(mask) {
     var names = MODES.filter(function (m) { return mask & m[0]; }).map(function (m) { return m[1]; });
     return names.join(' + ') + ' (' + names.length + '/3)';
@@ -99,7 +128,7 @@
       if (it) items.push(it); else bad++;
     });
     items.sort(function (a, b) { return a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name); });
-    return { character: cleanName(h[1]), date: h[3] || '', items: items, bad: bad };
+    return { character: cleanName(h[1]), date: h[3] || '', race: raceKey(h[4]), gender: genderKey(h[5]), items: items, bad: bad };
   }
 
   /* ---------- data: Supabase when configured, in-page demo otherwise ---------- */
@@ -111,11 +140,14 @@
   async function apiList(mask) {
     if (!LIVE) return demoVaults.filter(function (v) { return v.mask === mask || v.mask === 0; });
     var since = new Date(Date.now() - MAX_AGE_DAYS * 864e5).toISOString();
-    var r = await fetch(API_URL + '/rest/v1/vaults?select=character,mask,note,items,updated_at&mask=eq.' + mask +
-      '&updated_at=gte.' + encodeURIComponent(since) + '&order=updated_at.desc&limit=500', { headers: headers() });
+    var q = '&mask=eq.' + mask + '&updated_at=gte.' + encodeURIComponent(since) + '&order=updated_at.desc&limit=500';
+    var r = await fetch(API_URL + '/rest/v1/vaults?select=character,mask,note,items,updated_at,race,gender' + q, { headers: headers() });
+    // Database not migrated yet (no race columns): read the original columns.
+    if (!r.ok) r = await fetch(API_URL + '/rest/v1/vaults?select=character,mask,note,items,updated_at' + q, { headers: headers() });
     if (!r.ok) throw new Error('load_failed');
     return (await r.json()).map(function (v) {
       return { character: String(v.character || ''), mask: v.mask, note: String(v.note || ''), updated_at: v.updated_at,
+        race: raceKey(v.race), gender: genderKey(v.gender),
         items: (Array.isArray(v.items) ? v.items : []).map(norm).filter(Boolean) };
     });
   }
@@ -124,15 +156,45 @@
     try { r = await fetch(API_URL + '/rest/v1/rpc/' + name, { method: 'POST', headers: headers(), body: JSON.stringify(body) }); }
     catch (e) { throw new Error('network'); }
     try { j = await r.json(); } catch (e) {}
-    if (!r.ok) throw new Error((j && j.message) || 'request_failed');
+    if (!r.ok) { var err = new Error((j && j.message) || 'request_failed'); err.code = (j && j.code) || ''; throw err; }
     return j;
   }
+  function logRow(v) {
+    return { when: v.created_at, requester: String(v.requester || ''), race: raceKey(v.race), gender: genderKey(v.gender),
+      donor: String(v.donor || ''), donorRace: raceKey(v.donor_race), donorGender: genderKey(v.donor_gender),
+      items: (Array.isArray(v.items) ? v.items : []).filter(Array.isArray).map(function (a) {
+        var icon = String(a[4] || '').toLowerCase(), q = parseInt(a[2], 10);
+        return { id: parseInt(a[0], 10) || 0, qty: parseInt(a[1], 10) || 1, q: q >= 0 && q <= 7 ? q : 1, name: String(a[3] || '').slice(0, 80),
+          icon: /^[a-z0-9_]+$/.test(icon) ? icon : '' };
+      }) };
+  }
+  // Returns null when the log is not available (database not migrated yet, or unreachable).
+  async function apiLogList(mask) {
+    if (!LIVE) return demoLog.filter(function (r) { return r.mask === mask || r.mask === 0; });
+    try {
+      var r = await fetch(API_URL + '/rest/v1/requests?select=created_at,requester,race,gender,donor,donor_race,donor_gender,items&mask=eq.' + mask +
+        '&order=created_at.desc&limit=30', { headers: headers() });
+      if (!r.ok) return null;
+      return (await r.json()).map(logRow);
+    } catch (e) { return null; }
+  }
+  async function apiLog(p) {
+    if (LIVE) return rpc('log_request', { p_requester: p.requester, p_donor: p.donor, p_items: p.items, p_race: p.race || null, p_gender: p.gender || null });
+    var d = demoVaults.filter(function (v) { return v.character === p.donor; })[0] || {};
+    demoLog.unshift({ mask: 0, when: new Date().toISOString(), requester: p.requester, race: p.race, gender: p.gender, donor: p.donor,
+      donorRace: d.race || '', donorGender: d.gender || '', items: p.shown });
+  }
   async function apiUpload(p) {
-    if (LIVE) return rpc('upload_vault', { p_character: p.character, p_mask: p.mask, p_items: p.items, p_code: p.code || null, p_note: p.note });
+    if (LIVE) {
+      var body = { p_character: p.character, p_mask: p.mask, p_items: p.items, p_code: p.code || null, p_note: p.note };
+      try { return await rpc('upload_vault', Object.assign({ p_race: p.race || null, p_gender: p.gender || null }, body)); }
+      catch (e) { if (e.code !== 'PGRST202') throw e; }   // database not migrated yet: upload without the race
+      return rpc('upload_vault', body);
+    }
     var key = p.character.toLowerCase(), old = demoVaults.filter(function (v) { return v.character.toLowerCase() === key; })[0];
     if (old && old.code !== p.code) throw new Error('wrong_code');
     if (old) demoVaults.splice(demoVaults.indexOf(old), 1);
-    demoVaults.push({ character: p.character, mask: p.mask, note: p.note, updated_at: new Date().toISOString(), code: 'DEMO-0000-0000',
+    demoVaults.push({ character: p.character, mask: p.mask, note: p.note, race: p.race, gender: p.gender, updated_at: new Date().toISOString(), code: 'DEMO-0000-0000',
       items: p.items.map(norm).filter(Boolean) });
     return { character: p.character, code: old ? null : 'DEMO-0000-0000', count: p.items.length };
   }
@@ -169,8 +231,13 @@
     });
     var now = Date.now();
     demoVaults = [   // mask 0: shown for every challenge set in demo mode
-      { character: 'Frostmule', mask: 0, note: 'Demo donor', updated_at: new Date(now - 864e5).toISOString(), items: a, code: '' },
-      { character: 'Saronite', mask: 0, note: 'Demo donor', updated_at: new Date(now - 4 * 864e5).toISOString(), items: b, code: '' }
+      { character: 'Frostmule', mask: 0, note: 'Demo donor', race: 'dwarf', gender: 'male', updated_at: new Date(now - 864e5).toISOString(), items: a, code: '' },
+      { character: 'Saronite', mask: 0, note: 'Demo donor', race: 'bloodelf', gender: 'female', updated_at: new Date(now - 4 * 864e5).toISOString(), items: b, code: '' }
+    ];
+    var pick = function (list, i, qty) { var it = list[i % list.length]; return { id: it.id, qty: qty, q: it.q, name: it.name, icon: it.icon }; };
+    demoLog = [
+      { mask: 0, when: new Date(now - 25 * 6e4).toISOString(), requester: 'Tundrawolf', race: 'tauren', gender: 'male', donor: 'Frostmule', donorRace: 'dwarf', donorGender: 'male', items: [pick(a, 0, 5), pick(a, 9, 2)] },
+      { mask: 0, when: new Date(now - 7 * 36e5).toISOString(), requester: 'Elunara', race: 'nightelf', gender: 'female', donor: 'Saronite', donorRace: 'bloodelf', donorGender: 'female', items: [pick(b, 2, 10)] }
     ];
   }
 
@@ -183,7 +250,7 @@
         var k = it.id + ':' + it.suffix, a = map[k];
         if (!a) { a = map[k] = { key: k, id: it.id, suffix: it.suffix, name: it.name, q: it.q, stack: it.stack, icon: it.icon, cat: it.cat, total: 0, holders: [] }; list.push(a); }
         a.total += it.count;
-        a.holders.push({ who: v.character, count: it.count, when: v.updated_at });
+        a.holders.push({ who: v.character, count: it.count, when: v.updated_at, race: v.race, gender: v.gender });
       });
     });
     list.forEach(function (a) { a.holders.sort(function (x, y) { return y.count - x.count; }); });
@@ -303,12 +370,16 @@
     if (!keys.length) return notify('Your request is empty. Add an item first.');
     if (!validName(name)) return notify('Enter your character name: 2 to 12 letters, no spaces or numbers.');
     name = cleanName(name); lsSet('ironvault.me', name);
-    var by = {}, order = [];
+    var race = $('myRace').value, gender = race ? $('myGender').value : '';
+    lsSet('ironvault.race', race); lsSet('ironvault.gender', $('myGender').value);
+    var by = {}, order = [], sent = {};
     keys.forEach(function (k) {
       var a = byKey(k), line = state.cart[k]; if (!a) return;
       if (line.who.toLowerCase() === name.toLowerCase()) return;
-      if (!by[line.who]) { by[line.who] = []; order.push(line.who); }
+      if (!by[line.who]) { by[line.who] = []; order.push(line.who); sent[line.who] = { ids: [], shown: [] }; }
       by[line.who].push(line.qty + 'x ' + a.name);
+      sent[line.who].ids.push([a.id, a.suffix, line.qty]);
+      sent[line.who].shown.push({ id: a.id, qty: line.qty, q: a.q, name: a.name, icon: a.icon });
     });
     if (!order.length) return notify('Every item in this request is from your own list.');
     var box = $('requests'); box.textContent = '';
@@ -318,6 +389,34 @@
     });
     notify('');
     var d = $('done'); if (d.showModal) d.showModal(); else d.setAttribute('open', '');
+    // Public log, best effort: a failure here never blocks the request itself.
+    Promise.all(order.map(function (who) {
+      return Promise.resolve(apiLog({ requester: name, donor: who, items: sent[who].ids, shown: sent[who].shown, race: race, gender: gender })).catch(function () {});
+    })).then(loadLog);
+  }
+
+  /* ---------- request log ---------- */
+  function renderLog() {
+    var sec = $('log'), ul = $('logList'); ul.textContent = '';
+    if (state.log === null || !state.mask) { sec.hidden = true; return; }
+    sec.hidden = false;
+    if (!state.log.length) return ul.appendChild(el('li', { class: 'empty', text: 'No requests yet for ' + modeName(state.mask) + '.' }));
+    state.log.forEach(function (r) {
+      var t = el('time', { datetime: r.when, text: agoFine(r.when) });
+      ul.appendChild(el('li', { class: 'log-row' }, [
+        el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender), el('span', { class: 'arrow', text: 'asked' }),
+          whoNode(r.donor, r.donorRace, r.donorGender), el('span', { class: 'arrow', text: 'for' }), t]),
+        el('div', { class: 'log-items' }, r.items.map(function (it) {
+          return el('span', {}, [el('span', { class: 'mini' }, [iconNode(it, 'g-spark')]), el('span', { class: 'q' + it.q, text: it.qty + '× ' + it.name })]);
+        }))
+      ]));
+    });
+  }
+  var logSeq = 0;
+  async function loadLog() {
+    var seq = ++logSeq, rows = state.mask ? await apiLogList(state.mask) : [];
+    if (seq !== logSeq) return;
+    state.log = rows; renderLog();
   }
 
   /* ---------- sharing an inventory ---------- */
@@ -351,12 +450,17 @@
     MODES.forEach(function (m) { $('s' + m[0]).checked = !!(state.mask & m[0]); });
     $('shareCode').value = lsGet('ironvault.code.' + share.character.toLowerCase()) || '';
     $('shareNote').value = lsGet('ironvault.note') || '';
+    var known = state.vaults.filter(function (v) { return v.character === share.character; })[0] || {};
+    $('shareRace').value = share.race || known.race || lsGet('ironvault.share.race') || '';
+    $('shareGender').value = share.gender || known.gender || lsGet('ironvault.share.gender') || 'male';
     renderPreview(); $('sharePrep').hidden = false;
     if (share.bad) shareMsg([note(share.bad + ' lines could not be read and were skipped.')]);
   }
   async function upload() {
     if (!share) return;
     var mask = shareMask(), code = $('shareCode').value.trim().toUpperCase(), noteText = $('shareNote').value.trim();
+    var sRace = $('shareRace').value, sGender = sRace ? $('shareGender').value : '';
+    lsSet('ironvault.share.race', sRace); lsSet('ironvault.share.gender', $('shareGender').value);
     if (!mask) return shareMsg([note(ERRORS.invalid_mask)]);
     var locked = 0;
     var items = share.items.filter(function (it) {
@@ -367,7 +471,7 @@
     if (!items.length) return shareMsg([note('Nothing to upload: tick at least one item.')]);
     var btn = $('uploadBtn'); btn.disabled = true;
     try {
-      var res = await apiUpload({ character: share.character, mask: mask, items: items, code: code, note: noteText });
+      var res = await apiUpload({ character: share.character, mask: mask, items: items, code: code, note: noteText, race: sRace, gender: sGender });
       var out = [note('Uploaded ' + items.length + ' items for ' + share.character + ' (' + modeName(mask) + ').' +
         (locked ? ' ' + locked + ' green or better gear pieces were left out because Ironman characters cannot equip them.' : ''), true)];
       if (res && res.code) {
@@ -410,6 +514,7 @@
       state.error = 'The vault could not be loaded. Check your connection and reload the page.';
     }
     state.loading = false; aggregate(); renderCatalog(); renderOrder();
+    loadLog();
   }
 
   MODES.forEach(function (m) {
@@ -433,6 +538,8 @@
   var savedMask = parseInt(lsGet('ironvault.mask') || '', 10);
   if (savedMask >= 1 && savedMask <= 7) state.mask = savedMask;
   $('recipient').value = lsGet('ironvault.me') || '';
+  fillRaces($('myRace'), true); fillRaces($('shareRace'), true);
+  $('myRace').value = raceKey(lsGet('ironvault.race')); $('myGender').value = genderKey(lsGet('ironvault.gender')) || 'male';
   if (!LIVE) { buildDemo(); $('modePill').hidden = false; }
   load();
 })();

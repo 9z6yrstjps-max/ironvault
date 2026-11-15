@@ -3,6 +3,7 @@
     <div>
       <h1>Iron Vault</h1>
       <p class="sub">Community stock for <b>ChromieCraft challenge</b> characters</p>
+      <nav class="nav"><a href="./">About &amp; addon install</a><a href="#log">Recent requests</a><a href="#share">Share your inventory</a></nav>
     </div>
     <div class="stats">
       <span class="pill" id="modePill" hidden>Demo data: database not connected</span>
@@ -23,7 +24,7 @@
 
   <div class="cols">
     <main class="catalog">
-      <details class="how frame" open>
+      <details class="how frame">
         <summary>How this works</summary>
         <div class="how-grid">
           <div>
@@ -69,6 +70,15 @@
           </div>
           <div class="fields">
             <div>
+              <label for="shareRace">Race (shown as an icon next to the name)</label>
+              <div class="pair">
+                <select class="field full" id="shareRace" aria-label="Race of this character"></select>
+                <select class="field full" id="shareGender" aria-label="Sex of this character"><option value="male">Male</option><option value="female">Female</option></select>
+              </div>
+            </div>
+          </div>
+          <div class="fields">
+            <div>
               <label for="shareNote">Note for other players (optional)</label>
               <input class="field full" id="shareNote" type="text" maxlength="120" placeholder="Online most evenings, CET">
             </div>
@@ -90,6 +100,12 @@
         </div>
         <div id="shareMsg" aria-live="polite"></div>
       </details>
+
+      <section class="frame log" id="log" aria-labelledby="logTitle" hidden>
+        <h2 id="logTitle">Recent requests</h2>
+        <p class="hint">What players asked for on this site. Trades happen in game, so this is not proof that items changed hands.</p>
+        <ul class="log-list" id="logList"></ul>
+      </section>
     </main>
 
     <aside class="order frame" aria-labelledby="orderTitle">
@@ -99,6 +115,13 @@
       <div>
         <label for="recipient">Your character</label>
         <input class="field full" id="recipient" type="text" maxlength="12" autocomplete="off" placeholder="Character name">
+      </div>
+      <div>
+        <label for="myRace">Your race (optional, shown in the request log)</label>
+        <div class="pair">
+          <select class="field full" id="myRace"></select>
+          <select class="field full" id="myGender" aria-label="Your character's sex"><option value="male">Male</option><option value="female">Female</option></select>
+        </div>
       </div>
       <div id="notices" aria-live="polite"></div>
       <button class="btn" id="confirm" type="button">Prepare requests</button>

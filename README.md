@@ -10,15 +10,17 @@ Sito statico (GitHub Pages) + database Supabase. Nessun account richiesto ai gio
 
 | Percorso | Cosa contiene |
 | --- | --- |
-| `index.html` | Il sito, generato da `src/` con `python3 build.py`. Non modificarlo a mano. |
+| `index.html` | Pagina di atterraggio: cos'è il vault, come installare l'addon, avviso che è un progetto non ufficiale. Generata da `src/landing.html`. |
+| `vault.html` | Il vault vero e proprio (catalogo, richieste, caricamento, registro delle richieste). Generato da `src/` con `python3 build.py`. Non modificare a mano i due file. |
 | `config.js` | Indirizzo e chiave pubblica di Supabase. Vuoto = modalità demo. |
 | `supabase/schema.sql` | Tabella, regole di accesso e funzioni di caricamento. |
+| `supabase/migration-002-requests.sql` | Da eseguire dopo `schema.sql`: razza dei personaggi e registro pubblico delle richieste (`requests`, `log_request()`). |
 | `addon/IronVault/` | Addon per il client 3.3.5a. `IronVault.zip` è lo stesso addon pronto da scaricare dal sito. |
 | `src/` | Sorgenti della pagina (HTML, CSS, JavaScript, icone, dati demo). |
 
 ## Messa in linea
 
-1. **Supabase**: crea un progetto, apri *SQL Editor*, incolla `supabase/schema.sql` ed esegui.
+1. **Supabase**: crea un progetto, apri *SQL Editor*, incolla `supabase/schema.sql` ed esegui; poi fai lo stesso con `supabase/migration-002-requests.sql`.
 2. **Chiavi**: in *Project Settings > API* copia l'URL del progetto e la chiave pubblica (`anon` o `publishable`)
    dentro `config.js`. Non usare mai la chiave `service_role` / `secret`.
 3. **GitHub**: carica il contenuto di questa cartella in un repository e attiva *Settings > Pages* sul ramo principale, cartella `/`.

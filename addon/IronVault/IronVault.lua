@@ -1,9 +1,9 @@
--- IronVault 0.2 (WoW 3.3.5a)
+-- IronVault 0.3 (WoW 3.3.5a)
 -- Read-only: it scans bags and bank and shows the result as text to copy.
 -- It never moves items, sends mail or presses anything for you.
 --
 -- Export format, one record per line, fields separated by "^":
---   IRONVAULT1^character^copper^date
+--   IRONVAULT1^character^copper^date^race^sex   (race as the client names it, e.g. NightElf; sex male/female)
 --   itemId^suffixId^count^quality^stackSize^equipSlot^icon^type^subtype^name
 
 IronVaultDB = IronVaultDB or {}
@@ -114,7 +114,12 @@ local function buildExport()
   end
   table.sort(lines)
 
-  local header = table.concat({ "IRONVAULT1", UnitName("player"), GetMoney(), date("%Y-%m-%d %H:%M") }, "^")
+  local _, raceFile = UnitRace("player")
+  local sex = UnitSex("player")   -- 2 = male, 3 = female
+  local header = table.concat({
+    "IRONVAULT1", UnitName("player"), GetMoney(), date("%Y-%m-%d %H:%M"),
+    clean(raceFile), sex == 3 and "female" or sex == 2 and "male" or ""
+  }, "^")
   return header .. "\n" .. table.concat(lines, "\n"), n, bank ~= nil
 end
 
