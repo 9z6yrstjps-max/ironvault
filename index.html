@@ -220,6 +220,23 @@ section.log h2 { font: 600 1.05rem var(--display); color: var(--gold); margin: 0
 .side .log-items { font-size: .85rem; }
 @media (max-width: 900px) { .side { position: static; max-height: none; } .side .log-list { max-height: 420px; } }
 @media (max-height: 640px) { .side { position: static; max-height: none; } .side .log-list { max-height: 420px; } }
+
+/* ---------- ChromieCraft API: character card, online dot, fallen donors, landing numbers ---------- */
+.ccard { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; padding: 6px 9px; border-radius: 4px;
+  background: var(--panel); border-left: 3px solid var(--frost); font-size: .9rem; }
+.ccard[hidden] { display: none; }
+.ccard.warn { border-color: var(--gold); color: var(--ice); }
+.cc-sub { color: var(--mist); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px rgba(30,255,0,.7);
+  margin: 0 5px 0 0; vertical-align: 1px; flex: none; }
+.who .dot { margin: 0 0 0 2px; }
+.fallen { margin: 0 0 10px; }
+.live { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.live div { background: var(--panel); border: 1px solid var(--steel); border-radius: 4px; padding: 8px 12px; }
+.live b { display: block; font: 600 1.4rem var(--display); color: var(--frost); font-variant-numeric: tabular-nums; }
+.live span { display: block; color: var(--ice); font-size: .92rem; }
+.live small { color: var(--mist); }
+section[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -240,6 +257,12 @@ section.log h2 { font: 600 1.05rem var(--display); color: var(--gold); margin: 0
       <p>Challenge characters can only trade with characters running the <b>exact same set of challenges</b>. That makes spare cloth, potions, gems and bags hard to pass on, and hard to find when you need them.</p>
       <p>Iron Vault is a shared list of what players are willing to give away. You pick your challenges, see what donors with the same set have in stock, and get a ready-made whisper to send them in game. Everything is free.</p>
     </div>
+  </section>
+
+  <section class="frame block" id="live" aria-labelledby="liveTitle" hidden>
+    <h2 id="liveTitle">Challenges on ChromieCraft right now</h2>
+    <div class="live" id="liveGrid"></div>
+    <p class="hint">Characters still in the running, from ChromieCraft's own leaderboard. You can only trade inside your own group.</p>
   </section>
 
   <section class="frame block" aria-labelledby="takeTitle">
@@ -280,5 +303,37 @@ section.log h2 { font: 600 1.05rem var(--display); color: var(--gold); margin: 0
   <p class="foot"><a href="vault.html">Open the vault</a> · <a href="https://github.com/9z6yrstjps-max/ironvault" rel="noopener">Source code</a></p>
 </div>
 
+<script src="config.js"></script>
+<script>
+(function () {
+  'use strict';
+  // Live numbers from ChromieCraft's public API. If it does not answer, the section simply stays hidden.
+  var api = String((window.IRONVAULT_CONFIG || {}).chromieApi || '').replace(/\/+$/, '');
+  if (!api) return;
+  var NAMES = [[1, 'Hardcore'], [2, 'Ironman'], [4, 'Bloodthirsty']];
+  function label(mask) { return NAMES.filter(function (m) { return mask & m[0]; }).map(function (m) { return m[1]; }).join(' + '); }
+  function show(rows) {
+    if (!Array.isArray(rows) || !rows.length) return;
+    var grid = document.getElementById('liveGrid');
+    rows.filter(function (r) { return r.challenge >= 1 && r.challenge <= 7; })
+      .sort(function (a, b) { return (+b.active || 0) - (+a.active || 0); })
+      .forEach(function (r) {
+        var d = document.createElement('div'), b = document.createElement('b'), s = document.createElement('span'), m = document.createElement('small');
+        b.textContent = (+r.active || 0).toLocaleString('en');
+        s.textContent = label(+r.challenge);
+        m.textContent = (+r.completed || 0).toLocaleString('en') + ' completed · ' + (+r.dead || 0).toLocaleString('en') + ' fallen';
+        d.appendChild(b); d.appendChild(s); d.appendChild(m); grid.appendChild(d);
+      });
+    if (grid.children.length) document.getElementById('live').hidden = false;
+  }
+  var key = 'ivcc:stats', hit = null;
+  try { hit = JSON.parse(sessionStorage.getItem(key) || 'null'); } catch (e) {}
+  if (hit && Date.now() - hit.t < 15 * 6e4) return show(hit.d);
+  fetch(api + '/characters/challenge_modes/stats').then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (d) {
+    try { sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), d: d })); } catch (e) {}
+    show(d);
+  }).catch(function () {});
+})();
+</script>
 </body>
 </html>

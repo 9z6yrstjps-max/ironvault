@@ -13,10 +13,15 @@
   var RACES = [['human', 'Human'], ['dwarf', 'Dwarf'], ['nightelf', 'Night Elf'], ['gnome', 'Gnome'], ['draenei', 'Draenei'],
     ['orc', 'Orc'], ['scourge', 'Undead'], ['tauren', 'Tauren'], ['troll', 'Troll'], ['bloodelf', 'Blood Elf']];
 
+  // ChromieCraft's public API (github.com/azerothcore/acore-api). Optional: when it does not answer, the site works without it.
+  var CC_API = String(CFG.chromieApi || '').replace(/\/+$/, '');
+  var RACE_IDS = { 1: 'human', 2: 'orc', 3: 'dwarf', 4: 'nightelf', 5: 'scourge', 6: 'tauren', 7: 'gnome', 8: 'troll', 10: 'bloodelf', 11: 'draenei' };
+  var CLASSES = { 1: 'Warrior', 2: 'Paladin', 3: 'Hunter', 4: 'Rogue', 5: 'Priest', 6: 'Death Knight', 7: 'Shaman', 8: 'Mage', 9: 'Warlock', 11: 'Druid' };
+
   /*ICONS_DATA*/
   /*DEMO_DATA*/
 
-  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', log: null };
+  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', log: null, online: null, fallen: {}, hidden: [] };
   var share = null;            // parsed export waiting to be uploaded
   var demoVaults = [], demoLog = [];   // demo mode only
   var $ = function (id) { return document.getElementById(id); };
@@ -78,7 +83,9 @@
     img.addEventListener('error', function () { box.textContent = ''; initial(); });
     box.appendChild(img); return box;
   }
-  function whoNode(name, race, gender) { return el('span', { class: 'who' }, [raceNode(race, gender, name), document.createTextNode(name)]); }
+  function whoNode(name, race, gender) {
+    return el('span', { class: 'who' }, [raceNode(race, gender, name), document.createTextNode(name), isOnline(name) ? dot() : null]);
+  }
   function fillRaces(sel, withBlank) {
     if (withBlank) sel.appendChild(el('option', { value: '', text: 'Not shown' }));
     RACES.forEach(function (r) { sel.appendChild(el('option', { value: r[0], text: r[1] })); });
@@ -241,10 +248,96 @@
     ];
   }
 
+  /* ---------- ChromieCraft API: who a character is, who is online, who has fallen ---------- */
+  // The API allows few calls per hour, so every answer is kept for a while in this tab's storage.
+  var ccDownUntil = 0;
+  function ssGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+  function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
+  async function ccGet(path, ttlMin) {
+    if (!CC_API || Date.now() < ccDownUntil) return null;
+    var key = 'ivcc:' + path, hit = null;
+    try { hit = JSON.parse(ssGet(key) || 'null'); } catch (e) {}
+    if (hit && Date.now() - hit.t < ttlMin * 6e4) return hit.d;
+    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 7000);
+    try {
+      var r = await fetch(CC_API + path, ctl ? { signal: ctl.signal } : undefined);
+      if (!r.ok) throw new Error('cc_' + r.status);
+      var d = await r.json();
+      ssSet(key, JSON.stringify({ t: Date.now(), d: d }));
+      return d;
+    } catch (e) { ccDownUntil = Date.now() + 3 * 6e4; return null; }   // leave it alone for a few minutes
+    finally { clearTimeout(timer); }
+  }
+  function ccChar(r) {
+    return { name: String(r.name || ''), race: RACE_IDS[r.race] || '', gender: +r.gender === 1 ? 'female' : 'male', cls: CLASSES[r['class']] || '',
+      level: +r.level || 0, mask: +r.challenge || 0, dead: +r.dead === 1, completed: +r.completed === 1, deleted: +r.char_deleted === 1,
+      diedOn: +r.died_on || 0 };
+  }
+  async function ccInMask(name, mask) {
+    var res = await ccGet('/characters/challenge_modes/leaderboard?challenge=' + mask + '&name=' + encodeURIComponent(name) + '&limit=20', 30);
+    if (!res || !Array.isArray(res.data)) return null;
+    var same = res.data.map(ccChar).filter(function (c) { return c.name.toLowerCase() === name.toLowerCase(); });
+    // A name can appear twice (a fallen character deleted and rolled again): prefer the one still around.
+    same.sort(function (a, b) { return (a.deleted - b.deleted) || (a.dead - b.dead); });
+    return same[0] || false;
+  }
+  // { status: 'found', c } | { status: 'missing' } | { status: 'unknown' } (API not answering)
+  async function ccFind(name, preferMask) {
+    name = cleanName(name);
+    var order = [1, 2, 3, 4, 5, 6, 7];
+    if (preferMask >= 1 && preferMask <= 7) {
+      var first = await ccInMask(name, preferMask);
+      if (first === null) return { status: 'unknown' };
+      if (first) return { status: 'found', c: first };
+      order = order.filter(function (m) { return m !== preferMask; });
+    }
+    var all = await Promise.all(order.map(function (m) { return ccInMask(name, m); }));
+    var found = all.filter(Boolean).sort(function (a, b) { return (a.deleted - b.deleted) || (a.dead - b.dead); })[0];
+    if (found) return { status: 'found', c: found };
+    return all.some(function (x) { return x === null; }) ? { status: 'unknown' } : { status: 'missing' };
+  }
+  function ccLine(c) { return [c.level ? 'Level ' + c.level : '', raceLabel(c.race), c.cls].filter(Boolean).join(' ') + ' · ' + modeName(c.mask); }
+  function ccCard(box, res, name) {
+    box.textContent = ''; box.hidden = true;
+    if (!res || res.status === 'unknown') return;
+    box.hidden = false;
+    if (res.status === 'missing') {
+      box.className = 'ccard warn';
+      return box.appendChild(el('span', { text: 'No challenge character called ' + name + ' on ChromieCraft. Check the spelling.' }));
+    }
+    var c = res.c; box.className = 'ccard' + (c.dead ? ' warn' : '');
+    box.appendChild(whoNode(c.name, c.race, c.gender));
+    box.appendChild(el('span', { class: 'cc-sub', text: ccLine(c) + (c.dead ? ' · fallen' : c.completed ? ' · completed' : '') }));
+  }
+  function isOnline(name) { return !!(state.online && state.online[String(name).toLowerCase()]); }
+  function dot() { return el('span', { class: 'dot', title: 'Online now', role: 'img', 'aria-label': 'online now' }); }
+  var onlineSeq = 0;
+  async function loadOnline() {
+    var seq = ++onlineSeq, list = await ccGet('/characters/online', 4);
+    if (seq !== onlineSeq || !Array.isArray(list)) return;
+    var map = {}; list.forEach(function (p) { if (p && p.name) map[String(p.name).toLowerCase()] = 1; });
+    state.online = map; renderCatalog(); renderOrder(); renderLog();
+  }
+  // Donors whose character died after their last upload cannot trade any more: their stock is hidden.
+  async function loadFallen(mask) {
+    if (!(mask & 1)) return {};
+    var res = await ccGet('/characters/challenge_modes/leaderboard?challenge=' + mask + '&status=dead&sort=date&direction=desc&limit=100', 15);
+    var map = {};
+    if (res && Array.isArray(res.data)) res.data.map(ccChar).forEach(function (c) { if (!map[c.name.toLowerCase()]) map[c.name.toLowerCase()] = c.diedOn || 1; });
+    return map;
+  }
+  function hasFallen(v) {
+    var died = state.fallen[v.character.toLowerCase()];
+    return !!died && (died === 1 || died * 1000 > new Date(v.updated_at).getTime());
+  }
+
   /* ---------- catalog ---------- */
   function aggregate() {
     var map = {}, list = [];
+    state.hidden = [];
     state.vaults.forEach(function (v) {
+      if (hasFallen(v)) { state.hidden.push(v.character); return; }
       v.items.forEach(function (it) {
         if ((state.mask & 2) && isLockedGear(it)) return;
         var k = it.id + ':' + it.suffix, a = map[k];
@@ -289,7 +382,7 @@
   function renderCatalog() {
     var root = $('catalog'), groups = {}, order = [], f = state.filter.toLowerCase(), stacks = 0;
     root.textContent = '';
-    $('statVaults').textContent = String(state.vaults.length);
+    $('statVaults').textContent = String(state.vaults.length - state.hidden.length);
     state.items.forEach(function (a) {
       stacks += Math.ceil(a.total / a.stack);
       if (f && a.name.toLowerCase().indexOf(f) < 0) return;
@@ -299,15 +392,18 @@
     $('statStacks').textContent = stacks.toLocaleString('en');
     if (state.loading) return root.appendChild(el('p', { class: 'empty', text: 'Loading the vault…' }));
     if (state.error) return root.appendChild(el('p', { class: 'notice', text: state.error }));
+    if (state.hidden.length) root.appendChild(el('p', { class: 'hint fallen', text: 'Hidden: ' + state.hidden.join(', ') +
+      (state.hidden.length === 1 ? ' has' : ' have') + ' fallen since the last upload, so the list can no longer be traded.' }));
     order.forEach(function (cat) {
       var g = glyph(cat), grid = el('div', { class: 'grid' });
       groups[cat].forEach(function (a) {
         var url = 'https://www.wowhead.com/wotlk/item=' + a.id;
         var donors = a.holders.length === 1 ? a.holders[0].who : a.holders.length + ' donors';
+        var on = a.holders.some(function (h) { return isOnline(h.who); });
         grid.appendChild(el('div', { class: 'item', on: { contextmenu: function (e) { e.preventDefault(); addToCart(a.key); } } }, [
           el('a', { class: 'tile q' + a.q, href: url, target: '_blank', rel: 'noopener', 'aria-hidden': 'true', tabindex: '-1' }, [iconNode(a, g), el('span', { class: 'cnt', text: String(a.total) })]),
           el('a', { class: 'nm q' + a.q, href: url, target: '_blank', rel: 'noopener', text: a.name }),
-          el('span', { class: 'holders', text: donors }),
+          el('span', { class: 'holders' }, [on ? dot() : null, document.createTextNode(donors)]),
           el('button', { class: 'btn sm', type: 'button', 'aria-label': 'Add ' + a.name + ' to request', text: '+', on: { click: function () { addToCart(a.key); } } })
         ]));
       });
@@ -328,10 +424,11 @@
       if (a.holders.length > 1) {
         from = el('select', { 'aria-label': 'Donor for ' + a.name, on: { change: function (e) { line.who = e.target.value; line.qty = Math.min(line.qty, maxFor(a, line.who)); renderOrder(); } } },
           a.holders.map(function (h) {
-            var o = el('option', { value: h.who, text: h.who + ' has ' + h.count + ' · updated ' + ago(h.when) });
+            var o = el('option', { value: h.who, text: h.who + ' has ' + h.count + (isOnline(h.who) ? ' · online now' : ' · updated ' + ago(h.when)) });
             if (h.who === line.who) o.selected = true; return o;
           }));
-      } else from = el('span', { class: 'from', text: 'from ' + line.who + ' · updated ' + ago(a.holders[0].when) });
+      } else from = el('span', { class: 'from' }, [document.createTextNode('from ' + line.who + ' · '),
+        isOnline(line.who) ? dot() : null, document.createTextNode(isOnline(line.who) ? 'online now' : 'updated ' + ago(a.holders[0].when))]);
       ul.appendChild(el('li', { class: 'line' }, [
         el('span', { class: 'mini' }, [iconNode(a, glyph(a.cat))]),
         el('span', { class: 'nm q' + a.q, text: a.name }),
@@ -385,7 +482,8 @@
     var box = $('requests'); box.textContent = '';
     order.forEach(function (who) {
       var text = whisperLines(who, name, by[who]).join('\n');
-      box.appendChild(el('div', { class: 'req' }, [el('h3', { text: 'Whisper ' + who }), el('pre', { text: text }), copyButton(text)]));
+      var where = !state.online ? '' : isOnline(who) ? ' (online now)' : ' (offline: send it by in-game mail)';
+      box.appendChild(el('div', { class: 'req' }, [el('h3', { text: 'Whisper ' + who + where }), el('pre', { text: text }), copyButton(text)]));
     });
     notify('');
     var d = $('done'); if (d.showModal) d.showModal(); else d.setAttribute('open', '');
@@ -453,7 +551,7 @@
     var known = state.vaults.filter(function (v) { return v.character === share.character; })[0] || {};
     $('shareRace').value = share.race || known.race || lsGet('ironvault.share.race') || '';
     $('shareGender').value = share.gender || known.gender || lsGet('ironvault.share.gender') || 'male';
-    renderPreview(); $('sharePrep').hidden = false;
+    renderPreview(); $('sharePrep').hidden = false; lookupShare();
     if (share.bad) shareMsg([note(share.bad + ' lines could not be read and were skipped.')]);
   }
   async function upload() {
@@ -506,15 +604,45 @@
     state.loading = true; state.error = ''; state.vaults = []; state.items = [];
     renderPick(); renderCatalog();
     try {
-      var v = state.mask ? await apiList(state.mask) : [];
+      var got = await Promise.all([state.mask ? apiList(state.mask) : [], state.mask ? loadFallen(state.mask) : {}]);
       if (seq !== loadSeq) return;
-      state.vaults = v;
+      state.vaults = got[0]; state.fallen = got[1] || {};
     } catch (e) {
       if (seq !== loadSeq) return;
       state.error = 'The vault could not be loaded. Check your connection and reload the page.';
     }
     state.loading = false; aggregate(); renderCatalog(); renderOrder();
-    loadLog();
+    loadLog(); loadOnline();
+  }
+
+  /* ---------- recognising characters by name ---------- */
+  function applyMask(mask) {
+    if (mask === state.mask) return false;
+    state.mask = mask; state.cart = {}; lsSet('ironvault.mask', String(mask)); load(); return true;
+  }
+  var meSeq = 0, meTimer = 0;
+  function lookupMe() {
+    clearTimeout(meTimer);
+    var name = $('recipient').value.trim(), box = $('meCard'), seq = ++meSeq;
+    if (!CC_API || !validName(name)) { box.hidden = true; return; }
+    meTimer = setTimeout(async function () {
+      var res = await ccFind(name, state.mask);
+      if (seq !== meSeq) return;
+      ccCard(box, res, cleanName(name));
+      if (res.status !== 'found') return;
+      if (res.c.race) { $('myRace').value = res.c.race; $('myGender').value = res.c.gender; }
+      if (!res.c.dead && applyMask(res.c.mask)) notify('Showing the stock for ' + modeName(res.c.mask) + ', the challenges ' + res.c.name + ' runs.', true);
+    }, 50);
+  }
+  async function lookupShare() {
+    var box = $('shareCard'); box.hidden = true;
+    if (!CC_API || !share) return;
+    var who = share.character, res = await ccFind(who, state.mask);
+    if (!share || share.character !== who) return;
+    ccCard(box, res, who);
+    if (res.status !== 'found') return;
+    MODES.forEach(function (m) { $('s' + m[0]).checked = !!(res.c.mask & m[0]); });
+    if (res.c.race) { $('shareRace').value = res.c.race; $('shareGender').value = res.c.gender; }
   }
 
   MODES.forEach(function (m) {
@@ -525,6 +653,10 @@
   });
   $('search').addEventListener('input', function (e) { state.filter = e.target.value.trim(); renderCatalog(); });
   $('confirm').addEventListener('click', prepare);
+  // Looked up when the field is left, not on every keystroke: the API allows few calls per hour.
+  $('recipient').addEventListener('change', lookupMe);
+  $('recipient').addEventListener('input', function () { meSeq++; clearTimeout(meTimer); $('meCard').hidden = true; });
+  setInterval(function () { if (!document.hidden) loadOnline(); }, 5 * 6e4);
   $('closeBtn').addEventListener('click', function () { $('done').close(); });
   $('readBtn').addEventListener('click', readExport);
   $('uploadBtn').addEventListener('click', upload);
@@ -541,5 +673,5 @@
   fillRaces($('myRace'), true); fillRaces($('shareRace'), true);
   $('myRace').value = raceKey(lsGet('ironvault.race')); $('myGender').value = genderKey(lsGet('ironvault.gender')) || 'male';
   if (!LIVE) { buildDemo(); $('modePill').hidden = false; }
-  load();
+  load(); lookupMe();
 })();

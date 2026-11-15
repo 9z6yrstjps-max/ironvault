@@ -89,3 +89,20 @@ section.log h2 { font: 600 1.05rem var(--display); color: var(--gold); margin: 0
 .side .log-items { font-size: .85rem; }
 @media (max-width: 900px) { .side { position: static; max-height: none; } .side .log-list { max-height: 420px; } }
 @media (max-height: 640px) { .side { position: static; max-height: none; } .side .log-list { max-height: 420px; } }
+
+/* ---------- ChromieCraft API: character card, online dot, fallen donors, landing numbers ---------- */
+.ccard { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; padding: 6px 9px; border-radius: 4px;
+  background: var(--panel); border-left: 3px solid var(--frost); font-size: .9rem; }
+.ccard[hidden] { display: none; }
+.ccard.warn { border-color: var(--gold); color: var(--ice); }
+.cc-sub { color: var(--mist); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px rgba(30,255,0,.7);
+  margin: 0 5px 0 0; vertical-align: 1px; flex: none; }
+.who .dot { margin: 0 0 0 2px; }
+.fallen { margin: 0 0 10px; }
+.live { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.live div { background: var(--panel); border: 1px solid var(--steel); border-radius: 4px; padding: 8px 12px; }
+.live b { display: block; font: 600 1.4rem var(--display); color: var(--frost); font-variant-numeric: tabular-nums; }
+.live span { display: block; color: var(--ice); font-size: .92rem; }
+.live small { color: var(--mist); }
+section[hidden] { display: none; }

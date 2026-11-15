@@ -63,6 +63,7 @@
 
         <div id="sharePrep" hidden>
           <p>Character: <b id="shareChar"></b> <span class="hint" id="shareDate"></span></p>
+          <div class="ccard" id="shareCard" hidden></div>
           <div class="chips" role="group" aria-label="Challenges this character runs">
             <label class="chip"><input type="checkbox" id="s1"> Hardcore</label>
             <label class="chip"><input type="checkbox" id="s2"> Ironman</label>
@@ -110,9 +111,10 @@
       <div>
         <label for="recipient">Your character</label>
         <input class="field full" id="recipient" type="text" maxlength="12" autocomplete="off" placeholder="Character name">
+        <div class="ccard" id="meCard" hidden></div>
       </div>
       <div>
-        <label for="myRace">Your race (optional, shown in the request log)</label>
+        <label for="myRace">Your race (filled in from your name when ChromieCraft answers)</label>
         <div class="pair">
           <select class="field full" id="myRace"></select>
           <select class="field full" id="myGender" aria-label="Your character's sex"><option value="male">Male</option><option value="female">Female</option></select>

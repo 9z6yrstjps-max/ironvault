@@ -5,5 +5,8 @@
 window.IRONVAULT_CONFIG = {
   supabaseUrl: "https://mbxgnnnvygldgxkzqisb.supabase.co",
   supabaseAnonKey: "sb_publishable_doh7sNeITIt_cRVx_mvaqw_P82gpQ1W",
-  maxAgeDays: 30   // lists not refreshed for this many days are hidden
+  maxAgeDays: 30,  // lists not refreshed for this many days are hidden
+  // ChromieCraft's public API: recognises characters by name, shows who is online and who has fallen.
+  // Leave empty to switch all of that off; the site also copes when the API does not answer.
+  chromieApi: "https://chromiecraft.com/api"
 };

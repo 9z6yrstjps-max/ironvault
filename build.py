@@ -41,7 +41,8 @@ vault_scripts = f"""<script>const whTooltips = {{ colorLinks: false, iconizeLink
 """
 
 pages = {
-    "index.html": page("Iron Vault: community vault for ChromieCraft challenges", read("landing.html")),   # landing page
+    "index.html": page("Iron Vault: community vault for ChromieCraft challenges", read("landing.html"),
+                       f"""<script src="config.js"></script>\n<script>\n{read("landing.js")}</script>\n"""),                 # landing page
     "vault.html": page("Iron Vault", read("glyphs.svg") + "\n" + read("body.html"), vault_scripts),       # the vault itself
 }
 for name, html in pages.items():
