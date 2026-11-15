@@ -209,6 +209,17 @@ section.log h2 { font: 600 1.05rem var(--display); color: var(--gold); margin: 0
 .plain { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 8px; }
 .foot { text-align: center; color: var(--mist); font-size: .9rem; margin: 0; }
 .foot a { color: var(--frost); }
+
+/* Right column: the request box with the request log under it. The column stays in view; the log scrolls inside it. */
+.side { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 24px); min-width: 0; }
+.side aside.order { position: static; flex: none; }
+.side section.log { flex: 1 1 auto; min-height: 120px; display: flex; flex-direction: column; padding: 12px 14px; }
+.side .log-list { overflow: auto; min-height: 0; }
+.side .log-head { font-size: .92rem; }
+.side .log-head time { flex-basis: 100%; margin-left: 28px; }
+.side .log-items { font-size: .85rem; }
+@media (max-width: 900px) { .side { position: static; max-height: none; } .side .log-list { max-height: 420px; } }
+@media (max-height: 640px) { .side { position: static; max-height: none; } .side .log-list { max-height: 420px; } }
 </style>
 </head>
 <body>
@@ -328,14 +339,9 @@ section.log h2 { font: 600 1.05rem var(--display); color: var(--gold); margin: 0
         </div>
         <div id="shareMsg" aria-live="polite"></div>
       </details>
-
-      <section class="frame log" id="log" aria-labelledby="logTitle" hidden>
-        <h2 id="logTitle">Recent requests</h2>
-        <p class="hint">What players asked for on this site. Trades happen in game, so this is not proof that items changed hands.</p>
-        <ul class="log-list" id="logList"></ul>
-      </section>
     </main>
 
+    <div class="side">
     <aside class="order frame" aria-labelledby="orderTitle">
       <h2 id="orderTitle">Your request</h2>
       <ul class="lines" id="lines"></ul>
@@ -354,6 +360,12 @@ section.log h2 { font: 600 1.05rem var(--display); color: var(--gold); margin: 0
       <div id="notices" aria-live="polite"></div>
       <button class="btn" id="confirm" type="button">Prepare requests</button>
     </aside>
+    <section class="frame log" id="log" aria-labelledby="logTitle" hidden>
+      <h2 id="logTitle">Recent requests</h2>
+      <p class="hint">What players asked for on this site. Trades happen in game, so this is not proof that items changed hands.</p>
+      <ul class="log-list" id="logList"></ul>
+    </section>
+    </div>
   </div>
 </div>
 
@@ -801,7 +813,7 @@ section.log h2 { font: 600 1.05rem var(--display); color: var(--gold); margin: 0
       var t = el('time', { datetime: r.when, text: agoFine(r.when) });
       ul.appendChild(el('li', { class: 'log-row' }, [
         el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender), el('span', { class: 'arrow', text: 'asked' }),
-          whoNode(r.donor, r.donorRace, r.donorGender), el('span', { class: 'arrow', text: 'for' }), t]),
+          whoNode(r.donor, r.donorRace, r.donorGender), t]),
         el('div', { class: 'log-items' }, r.items.map(function (it) {
           return el('span', {}, [el('span', { class: 'mini' }, [iconNode(it, 'g-spark')]), el('span', { class: 'q' + it.q, text: it.qty + '× ' + it.name })]);
         }))

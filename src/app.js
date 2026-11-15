@@ -405,7 +405,7 @@
       var t = el('time', { datetime: r.when, text: agoFine(r.when) });
       ul.appendChild(el('li', { class: 'log-row' }, [
         el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender), el('span', { class: 'arrow', text: 'asked' }),
-          whoNode(r.donor, r.donorRace, r.donorGender), el('span', { class: 'arrow', text: 'for' }), t]),
+          whoNode(r.donor, r.donorRace, r.donorGender), t]),
         el('div', { class: 'log-items' }, r.items.map(function (it) {
           return el('span', {}, [el('span', { class: 'mini' }, [iconNode(it, 'g-spark')]), el('span', { class: 'q' + it.q, text: it.qty + '× ' + it.name })]);
         }))
