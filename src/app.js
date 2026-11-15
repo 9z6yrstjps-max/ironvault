@@ -653,6 +653,12 @@
   });
   $('search').addEventListener('input', function (e) { state.filter = e.target.value.trim(); renderCatalog(); });
   $('confirm').addEventListener('click', prepare);
+  var toTop = $('toTop');
+  window.addEventListener('scroll', function () { toTop.hidden = window.scrollY < 500; }, { passive: true });
+  toTop.addEventListener('click', function () {
+    var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: calm ? 'auto' : 'smooth' });
+  });
   // Looked up when the field is left, not on every keystroke: the API allows few calls per hour.
   $('recipient').addEventListener('change', lookupMe);
   $('recipient').addEventListener('input', function () { meSeq++; clearTimeout(meTimer); $('meCard').hidden = true; });
