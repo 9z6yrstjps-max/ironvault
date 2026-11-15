@@ -414,7 +414,7 @@
     });
     if (!order.length) root.appendChild(el('p', { class: 'empty', text: !state.mask ? 'Tick your challenges above.'
       : f ? 'No item matches "' + state.filter + '".'
-      : 'Nobody running ' + modeName(state.mask) + ' has shared an inventory yet. Be the first: open Share your inventory, top right.' }));
+      : 'Nobody running ' + modeName(state.mask) + ' has shared an inventory yet. Be the first: press Share your inventory on the right.' }));
   }
   function renderOrder() {
     var ul = $('lines'), keys = Object.keys(state.cart); ul.textContent = '';
@@ -518,7 +518,10 @@
   }
 
   /* ---------- sharing an inventory ---------- */
-  function shareMsg(nodes) { var b = $('shareMsg'); b.textContent = ''; (nodes || []).forEach(function (n) { b.appendChild(n); }); }
+  function shareMsg(nodes) {
+    var b = $('shareMsg'); b.textContent = ''; (nodes || []).forEach(function (n) { b.appendChild(n); });
+    if (nodes && nodes.length && b.scrollIntoView) b.scrollIntoView({ block: 'nearest' });   // keep the result (and the code) in view
+  }
   function note(text, ok) { return el('div', { class: 'notice' + (ok ? ' ok' : ''), text: text }); }
   function skipSet() { try { return JSON.parse(lsGet('ironvault.skip') || '{}') || {}; } catch (e) { return {}; } }
   function shareMask() { return MODES.reduce(function (m, x) { return m | ($('s' + x[0]).checked ? x[0] : 0); }, 0); }
@@ -653,6 +656,13 @@
   });
   $('search').addEventListener('input', function (e) { state.filter = e.target.value.trim(); renderCatalog(); });
   $('confirm').addEventListener('click', prepare);
+  var shareDlg = $('share');
+  function openShare(e) { if (e) e.preventDefault(); if (shareDlg.open) return; if (shareDlg.showModal) shareDlg.showModal(); else shareDlg.setAttribute('open', ''); }
+  $('shareOpen').addEventListener('click', openShare);
+  $('shareClose').addEventListener('click', function () { shareDlg.close(); });
+  shareDlg.addEventListener('click', function (e) { if (e.target === shareDlg) shareDlg.close(); });   // click on the backdrop
+  Array.prototype.forEach.call(document.querySelectorAll('a[href="#share"]'), function (a) { a.addEventListener('click', openShare); });
+  if (location.hash === '#share') openShare();
   var toTop = $('toTop');
   window.addEventListener('scroll', function () { toTop.hidden = window.scrollY < 500; }, { passive: true });
   toTop.addEventListener('click', function () {

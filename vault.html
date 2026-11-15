@@ -242,12 +242,12 @@ section[hidden] { display: none; }
 .totop { position: fixed; left: 16px; bottom: 16px; z-index: 20; padding: 9px 14px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.6); }
 .totop[hidden] { display: none; }
 
-/* Share your inventory lives at the top of the right column. Open, it is tall: the column then scrolls with the page. */
-.side details.share { flex: none; }
-.side:has(details.share[open]) { position: static; max-height: none; }
-.side:has(details.share[open]) .log-list { max-height: 420px; }
-.side details.share .preview { grid-template-columns: 1fr; max-height: 240px; }
-.side details.share .fields { grid-template-columns: 1fr; }
+/* Share your inventory: a dialog in the foreground, opened from the right column. */
+.btn.wide { width: 100%; flex: none; }
+dialog.share { width: min(880px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; padding: 18px 20px; }
+dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .85rem/1.35 ui-monospace, Consolas, monospace; }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.dlg-head h2 { margin: 0; }
 </style>
 </head>
 <body>
@@ -325,52 +325,7 @@ section[hidden] { display: none; }
     </main>
 
     <div class="side">
-    <details class="share frame" id="share">
-      <summary>Share your inventory</summary>
-      <p class="hint">Paste the text from <code>/ivault</code>. Nothing is uploaded until you press Upload inventory.</p>
-      <textarea class="field" id="importText" aria-label="Addon export text" placeholder="IRONVAULT1^Yourcharacter^0^2026-11-15 00:10&#10;929^0^120^1^20^^inv_potion_51^Consumable^Potion^Healing Potion"></textarea>
-      <div class="row"><button class="btn" id="readBtn" type="button">Read export</button></div>
-
-      <div id="sharePrep" hidden>
-        <p>Character: <b id="shareChar"></b> <span class="hint" id="shareDate"></span></p>
-        <div class="ccard" id="shareCard" hidden></div>
-        <div class="chips" role="group" aria-label="Challenges this character runs">
-          <label class="chip"><input type="checkbox" id="s1"> Hardcore</label>
-          <label class="chip"><input type="checkbox" id="s2"> Ironman</label>
-          <label class="chip"><input type="checkbox" id="s4"> Bloodthirsty</label>
-        </div>
-        <div class="fields">
-          <div>
-            <label for="shareRace">Race (shown as an icon next to the name)</label>
-            <div class="pair">
-              <select class="field full" id="shareRace" aria-label="Race of this character"></select>
-              <select class="field full" id="shareGender" aria-label="Sex of this character"><option value="male">Male</option><option value="female">Female</option></select>
-            </div>
-          </div>
-        </div>
-        <div class="fields">
-          <div>
-            <label for="shareNote">Note for other players (optional)</label>
-            <input class="field full" id="shareNote" type="text" maxlength="120" placeholder="Online most evenings, CET">
-          </div>
-          <div>
-            <label for="shareCode">Vault code</label>
-            <input class="field full" id="shareCode" type="text" maxlength="20" autocomplete="off" placeholder="Leave empty the first time">
-          </div>
-        </div>
-        <div class="row">
-          <span id="pickCount" class="hint"></span>
-          <button class="btn ghost" id="allBtn" type="button">Offer everything</button>
-          <button class="btn ghost" id="noneBtn" type="button">Offer nothing</button>
-        </div>
-        <div class="preview" id="sharePreview"></div>
-        <div class="row">
-          <button class="btn" id="uploadBtn" type="button">Upload inventory</button>
-          <button class="btn ghost" id="removeBtn" type="button">Remove my list</button>
-        </div>
-      </div>
-      <div id="shareMsg" aria-live="polite"></div>
-    </details>
+    <button class="btn ghost wide" id="shareOpen" type="button">Share your inventory</button>
     <aside class="order frame" aria-labelledby="orderTitle">
       <h2 id="orderTitle">Your request</h2>
       <ul class="lines" id="lines"></ul>
@@ -400,6 +355,56 @@ section[hidden] { display: none; }
 </div>
 
 <button class="btn totop" id="toTop" type="button" aria-label="Back to top" title="Back to top" hidden>↑ Top</button>
+
+<dialog id="share" class="share" aria-labelledby="shareTitle">
+  <div class="dlg-head">
+    <h2 id="shareTitle">Share your inventory</h2>
+    <button class="btn ghost sm" id="shareClose" type="button" aria-label="Close">×</button>
+  </div>
+    <p class="hint">Paste the text from <code>/ivault</code>. Nothing is uploaded until you press Upload inventory.</p>
+    <textarea class="field" id="importText" aria-label="Addon export text" placeholder="IRONVAULT1^Yourcharacter^0^2026-11-15 00:10&#10;929^0^120^1^20^^inv_potion_51^Consumable^Potion^Healing Potion"></textarea>
+    <div class="row"><button class="btn" id="readBtn" type="button">Read export</button></div>
+
+    <div id="sharePrep" hidden>
+      <p>Character: <b id="shareChar"></b> <span class="hint" id="shareDate"></span></p>
+      <div class="ccard" id="shareCard" hidden></div>
+      <div class="chips" role="group" aria-label="Challenges this character runs">
+        <label class="chip"><input type="checkbox" id="s1"> Hardcore</label>
+        <label class="chip"><input type="checkbox" id="s2"> Ironman</label>
+        <label class="chip"><input type="checkbox" id="s4"> Bloodthirsty</label>
+      </div>
+      <div class="fields">
+        <div>
+          <label for="shareRace">Race (shown as an icon next to the name)</label>
+          <div class="pair">
+            <select class="field full" id="shareRace" aria-label="Race of this character"></select>
+            <select class="field full" id="shareGender" aria-label="Sex of this character"><option value="male">Male</option><option value="female">Female</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="fields">
+        <div>
+          <label for="shareNote">Note for other players (optional)</label>
+          <input class="field full" id="shareNote" type="text" maxlength="120" placeholder="Online most evenings, CET">
+        </div>
+        <div>
+          <label for="shareCode">Vault code</label>
+          <input class="field full" id="shareCode" type="text" maxlength="20" autocomplete="off" placeholder="Leave empty the first time">
+        </div>
+      </div>
+      <div class="row">
+        <span id="pickCount" class="hint"></span>
+        <button class="btn ghost" id="allBtn" type="button">Offer everything</button>
+        <button class="btn ghost" id="noneBtn" type="button">Offer nothing</button>
+      </div>
+      <div class="preview" id="sharePreview"></div>
+      <div class="row">
+        <button class="btn" id="uploadBtn" type="button">Upload inventory</button>
+        <button class="btn ghost" id="removeBtn" type="button">Remove my list</button>
+      </div>
+    </div>
+    <div id="shareMsg" aria-live="polite"></div>
+</dialog>
 
 <dialog id="done" aria-labelledby="doneTitle">
   <h2 id="doneTitle">Requests ready</h2>
@@ -854,7 +859,7 @@ section[hidden] { display: none; }
     });
     if (!order.length) root.appendChild(el('p', { class: 'empty', text: !state.mask ? 'Tick your challenges above.'
       : f ? 'No item matches "' + state.filter + '".'
-      : 'Nobody running ' + modeName(state.mask) + ' has shared an inventory yet. Be the first: open Share your inventory, top right.' }));
+      : 'Nobody running ' + modeName(state.mask) + ' has shared an inventory yet. Be the first: press Share your inventory on the right.' }));
   }
   function renderOrder() {
     var ul = $('lines'), keys = Object.keys(state.cart); ul.textContent = '';
@@ -958,7 +963,10 @@ section[hidden] { display: none; }
   }
 
   /* ---------- sharing an inventory ---------- */
-  function shareMsg(nodes) { var b = $('shareMsg'); b.textContent = ''; (nodes || []).forEach(function (n) { b.appendChild(n); }); }
+  function shareMsg(nodes) {
+    var b = $('shareMsg'); b.textContent = ''; (nodes || []).forEach(function (n) { b.appendChild(n); });
+    if (nodes && nodes.length && b.scrollIntoView) b.scrollIntoView({ block: 'nearest' });   // keep the result (and the code) in view
+  }
   function note(text, ok) { return el('div', { class: 'notice' + (ok ? ' ok' : ''), text: text }); }
   function skipSet() { try { return JSON.parse(lsGet('ironvault.skip') || '{}') || {}; } catch (e) { return {}; } }
   function shareMask() { return MODES.reduce(function (m, x) { return m | ($('s' + x[0]).checked ? x[0] : 0); }, 0); }
@@ -1093,6 +1101,13 @@ section[hidden] { display: none; }
   });
   $('search').addEventListener('input', function (e) { state.filter = e.target.value.trim(); renderCatalog(); });
   $('confirm').addEventListener('click', prepare);
+  var shareDlg = $('share');
+  function openShare(e) { if (e) e.preventDefault(); if (shareDlg.open) return; if (shareDlg.showModal) shareDlg.showModal(); else shareDlg.setAttribute('open', ''); }
+  $('shareOpen').addEventListener('click', openShare);
+  $('shareClose').addEventListener('click', function () { shareDlg.close(); });
+  shareDlg.addEventListener('click', function (e) { if (e.target === shareDlg) shareDlg.close(); });   // click on the backdrop
+  Array.prototype.forEach.call(document.querySelectorAll('a[href="#share"]'), function (a) { a.addEventListener('click', openShare); });
+  if (location.hash === '#share') openShare();
   var toTop = $('toTop');
   window.addEventListener('scroll', function () { toTop.hidden = window.scrollY < 500; }, { passive: true });
   toTop.addEventListener('click', function () {

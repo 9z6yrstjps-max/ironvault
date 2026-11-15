@@ -111,9 +111,9 @@ section[hidden] { display: none; }
 .totop { position: fixed; left: 16px; bottom: 16px; z-index: 20; padding: 9px 14px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.6); }
 .totop[hidden] { display: none; }
 
-/* Share your inventory lives at the top of the right column. Open, it is tall: the column then scrolls with the page. */
-.side details.share { flex: none; }
-.side:has(details.share[open]) { position: static; max-height: none; }
-.side:has(details.share[open]) .log-list { max-height: 420px; }
-.side details.share .preview { grid-template-columns: 1fr; max-height: 240px; }
-.side details.share .fields { grid-template-columns: 1fr; }
+/* Share your inventory: a dialog in the foreground, opened from the right column. */
+.btn.wide { width: 100%; flex: none; }
+dialog.share { width: min(880px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; padding: 18px 20px; }
+dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .85rem/1.35 ui-monospace, Consolas, monospace; }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.dlg-head h2 { margin: 0; }
