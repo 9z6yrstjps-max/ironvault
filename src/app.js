@@ -432,6 +432,13 @@
       ? 'Showing donors who run exactly ' + modeName(state.mask) + ', updated in the last ' + MAX_AGE_DAYS + ' days.'
       : 'Tick at least one challenge to see the stock.';
   }
+  // Header: most recent upload among the donors shown.
+  function renderFresh() {
+    var newest = state.vaults.filter(function (v) { return state.hidden.indexOf(v.character) < 0; })
+      .map(function (v) { return v.updated_at; }).sort().pop();
+    $('statFresh').textContent = newest ? agoFine(newest) : '–';
+    $('statFresh').title = newest ? new Date(newest).toLocaleString() : '';
+  }
   function renderCatalog() {
     var root = $('catalog'), groups = {}, order = [], f = state.filter.toLowerCase(), stacks = 0;
     root.textContent = '';
@@ -445,6 +452,7 @@
       groups[a.cat].push(a);
     });
     $('statStacks').textContent = stacks.toLocaleString('en');
+    renderFresh();
     if (state.loading) return root.appendChild(el('p', { class: 'empty', text: 'Loading the vault…' }));
     if (state.error) return root.appendChild(el('p', { class: 'notice', text: state.error }));
     if (state.hidden.length) root.appendChild(el('p', { class: 'hint fallen', text: 'Hidden: ' + state.hidden.join(', ') +
@@ -459,7 +467,8 @@
         grid.appendChild(el('div', { class: 'item', on: { contextmenu: function (e) { e.preventDefault(); addToCart(a.key); } } }, [
           el('a', { class: 'tile q' + a.q, href: url, target: '_blank', rel: 'noopener', 'aria-hidden': 'true', tabindex: '-1' }, [iconNode(a, g), el('span', { class: 'cnt', text: String(mine ? mine.count : a.total) })]),
           el('a', { class: 'nm q' + a.q, href: url, target: '_blank', rel: 'noopener', text: a.name }),
-          el('span', { class: 'holders' }, [on ? dot() : null, document.createTextNode(donors)]),
+          el('span', { class: 'holders', title: a.holders.map(function (h) { return h.who + ': updated ' + agoFine(h.when); }).join('\n') },
+            [on ? dot() : null, document.createTextNode(donors)]),
           el('button', { class: 'btn sm', type: 'button', 'aria-label': 'Add ' + a.name + ' to request', text: '+', on: { click: function () { addToCart(a.key); } } })
         ]));
       });
@@ -474,13 +483,13 @@
   }
   // Donor filter: "All donors" plus one entry per donor of the current challenge set.
   function renderDonors() {
-    var sel = $('donorFilter'), names = {}, list = [];
-    state.items.forEach(function (a) { a.holders.forEach(function (h) { if (!names[h.who]) { names[h.who] = 0; list.push(h.who); } names[h.who]++; }); });
+    var sel = $('donorFilter'), names = {}, list = [], when = {};
+    state.items.forEach(function (a) { a.holders.forEach(function (h) { if (!names[h.who]) { names[h.who] = 0; list.push(h.who); } names[h.who]++; when[h.who] = h.when; }); });
     list.sort(function (x, y) { return x.localeCompare(y); });
     if (list.indexOf(state.donor) < 0) state.donor = '';
     sel.textContent = '';
     sel.appendChild(el('option', { value: '', text: 'All donors (' + list.length + ')' }));
-    list.forEach(function (w) { sel.appendChild(el('option', { value: w, text: w + ' (' + names[w] + (names[w] === 1 ? ' item)' : ' items)') })); });
+    list.forEach(function (w) { sel.appendChild(el('option', { value: w, text: w + ' (' + names[w] + (names[w] === 1 ? ' item' : ' items') + ' · updated ' + agoFine(when[w]) + ')' })); });
     sel.value = state.donor; sel.hidden = list.length < 2;
   }
   function renderOrder() {
@@ -969,6 +978,7 @@
   $('recipient').addEventListener('change', lookupMe);
   $('recipient').addEventListener('input', function () { meSeq++; clearTimeout(meTimer); $('meCard').hidden = true; });
   setInterval(function () { if (!document.hidden) loadOnline(); }, 5 * 6e4);
+  setInterval(function () { if (!document.hidden) renderFresh(); }, 6e4);
   // A donor who leaves the tab open sees new requests arrive (count in the tab title).
   setInterval(function () { if (!document.hidden && myChars().length) loadInbox(); }, 2 * 6e4);
   document.addEventListener('visibilitychange', function () { if (!document.hidden && myChars().length) loadInbox(); });
