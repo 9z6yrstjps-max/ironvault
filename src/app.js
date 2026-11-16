@@ -572,7 +572,7 @@
         el('span', { class: 'hint', text: 'Your request, still waiting.' })]) : null;
       ul.appendChild(el('li', { class: 'log-row' }, [
         el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender), el('span', { class: 'arrow', text: 'asked' }),
-          whoNode(r.donor, r.donorRace, r.donorGender), r.delivered ? el('span', { class: 'tag ok', text: 'delivered' }) : null, t]),
+          whoNode(r.donor, r.donorRace, r.donorGender), r.delivered ? el('span', { class: 'tag ok', text: 'Delivered' }) : null, t]),
         itemsNode(r), mine
       ]));
     });
@@ -628,7 +628,7 @@
           mine.length > 1 ? el('span', { class: 'arrow', text: 'asked ' + r.donor }) : null,
           el('time', { datetime: r.when, text: agoFine(r.when) })]),
         itemsNode(r),
-        el('div', { class: 'row' }, [btn, r.delivered ? el('span', { class: 'hint', text: 'delivered ' + agoFine(r.delivered) })
+        el('div', { class: 'row' }, [btn, r.delivered ? el('span', { class: 'hint', text: 'Delivered ' + agoFine(r.delivered) })
           : armedButton('Remove', function (b) { removeRequest(r, b); })])
       ]);
     };

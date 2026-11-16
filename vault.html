@@ -394,7 +394,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     </aside>
     <section class="frame log" id="log" aria-labelledby="logTitle" hidden>
       <h2 id="logTitle">Recent requests</h2>
-      <p class="hint">What players asked for on this site. Trades happen in game: "delivered" is the donor's own confirmation.</p>
+      <p class="hint">What players asked for on this site. Trades happen in game: "Delivered" is the donor's own confirmation.</p>
       <ul class="log-list" id="logList"></ul>
     </section>
     </div>
@@ -1064,7 +1064,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
         el('span', { class: 'hint', text: 'Your request, still waiting.' })]) : null;
       ul.appendChild(el('li', { class: 'log-row' }, [
         el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender), el('span', { class: 'arrow', text: 'asked' }),
-          whoNode(r.donor, r.donorRace, r.donorGender), r.delivered ? el('span', { class: 'tag ok', text: 'delivered' }) : null, t]),
+          whoNode(r.donor, r.donorRace, r.donorGender), r.delivered ? el('span', { class: 'tag ok', text: 'Delivered' }) : null, t]),
         itemsNode(r), mine
       ]));
     });
@@ -1120,7 +1120,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
           mine.length > 1 ? el('span', { class: 'arrow', text: 'asked ' + r.donor }) : null,
           el('time', { datetime: r.when, text: agoFine(r.when) })]),
         itemsNode(r),
-        el('div', { class: 'row' }, [btn, r.delivered ? el('span', { class: 'hint', text: 'delivered ' + agoFine(r.delivered) })
+        el('div', { class: 'row' }, [btn, r.delivered ? el('span', { class: 'hint', text: 'Delivered ' + agoFine(r.delivered) })
           : armedButton('Remove', function (b) { removeRequest(r, b); })])
       ]);
     };
