@@ -248,6 +248,12 @@ dialog.share { width: min(880px, calc(100vw - 32px)); max-height: calc(100vh - 3
 dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .85rem/1.35 ui-monospace, Consolas, monospace; }
 .dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
 .dlg-head h2 { margin: 0; }
+
+/* Search box with the donor filter next to it. */
+.tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin-bottom: 16px; }
+.tools .search { flex: 1 1 240px; margin: 0; }
+.tools select { flex: 0 1 240px; min-width: 170px; }
+.tools select[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -319,7 +325,10 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
         </div>
       </details>
 
-      <input class="search" id="search" type="search" placeholder="Search items…" aria-label="Search items">
+      <div class="tools">
+        <input class="search" id="search" type="search" placeholder="Search items…" aria-label="Search items">
+        <select class="field" id="donorFilter" aria-label="Show one donor only" hidden><option value="">All donors</option></select>
+      </div>
       <div id="catalog"></div>
 
     </main>
@@ -466,7 +475,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
   '858=inv_potion_50,929=inv_potion_51,1710=inv_potion_52,3928=inv_potion_53,6149=inv_potion_73,5633=inv_potion_21,12190=inv_potion_83,9155=inv_potion_30,10592=inv_potion_36,13453=inv_potion_59,9233=inv_potion_53,3012=inv_scroll_02,10309=inv_scroll_02,27498=inv_scroll_02,955=inv_scroll_01,8932=inv_misc_food_37,4457=inv_misc_food_18,2888=inv_misc_food_48,27657=inv_misc_food_86_basilisk,3220=inv_misc_food_49,5525=inv_misc_shell_02,2304=inv_misc_armorkit_17,2313=inv_misc_armorkit_15,4265=inv_misc_armorkit_16,6043=inv_misc_orb_01,2581=inv_misc_bandage_18,3531=inv_misc_bandage_17,6451=inv_misc_bandage_02,8545=inv_misc_bandage_20,6452=inv_misc_slime_01,6811=inv_misc_spyglass_01,9312=spell_ice_magicdamage,5206=inv_misc_herb_07,5765=inv_misc_bag_07_black,856=inv_misc_bag_05,4498=inv_misc_bag_09,5573=inv_misc_bag_03,4560=inv_sword_24,2488=inv_sword_20,1411=inv_staff_02,3026=inv_weapon_bow_02,5347=inv_wand_04,6256=inv_fishingpole_02,14169=inv_shoulder_06,14157=inv_shoulder_06,14126=inv_shoulder_09,6566=inv_shoulder_13,10405=inv_shoulder_27,15313=inv_shoulder_08,4700=inv_shoulder_08,6588=inv_shoulder_27,1793=inv_shoulder_06,15496=inv_shoulder_23,4694=inv_shoulder_28,6579=inv_shoulder_27,15505=inv_shoulder_27,10407=inv_shoulder_23,14728=inv_shoulder_07,3030=inv_ammo_arrow_02,8067=inv_ammo_bullet_02,8068=inv_ammo_bullet_02,4382=inv_gizmo_bronzeframework_01,4371=inv_gizmo_pipe_01,4364=inv_misc_dust_02,4363=inv_gizmo_03,4370=inv_misc_bomb_01,4852=inv_misc_ammo_bullet_01,4405=inv_misc_spyglass_02,4406=inv_misc_spyglass_02,2996=inv_fabric_linen_02,2997=inv_fabric_wool_03,4305=inv_fabric_silk_03,4339=inv_fabric_mageweave_03,14256=inv_fabric_felrag,33567=inv_misc_leatherscrap_16,33568=inv_misc_leatherscrap_15,7286=inv_misc_monsterscales_03,15416=inv_misc_monsterscales_07,25699=inv_misc_leatherscrap_12,2841=inv_ingot_bronze,3857=inv_ore_tin_01,2836=inv_stone_09,12365=inv_misc_stonetablet_07,12644=inv_stone_grindingstone_05,11370=inv_ore_mithril_01,3173=inv_misc_food_71,3730=inv_misc_food_14,35562=inv_misc_food_13,27669=inv_misc_food_70,27422=inv_misc_fish_37,3172=inv_misc_organ_05,2450=inv_misc_root_01,8836=inv_misc_herb_13,13463=inv_misc_herb_dreamfoil,22710=inv_misc_herb_11,22790=inv_misc_herb_ancientlichen,37921=inv_misc_herb_constrictorgrass,7067=inv_ore_iron_01,7068=spell_fire_fire,7069=spell_nature_tranquility,7075=inv_stone_05,7081=spell_nature_cyclone,37704=inv_elemental_crystal_life,17056=inv_feather_04,17057=inv_misc_monsterscales_08,17058=inv_potion_64'
     .split(',').forEach(function (p) { var a = p.split('='); DEMO_ICON[a[0]] = a[1]; });
 
-  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', log: null, online: null, fallen: {}, hidden: [] };
+  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [] };
   var share = null;            // parsed export waiting to be uploaded
   var demoVaults = [], demoLog = [];   // demo mode only
   var $ = function (id) { return document.getElementById(id); };
@@ -807,7 +816,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     var a = byKey(k); if (!a) return;
     var line = state.cart[k];
     if (!line && Object.keys(state.cart).length >= MAX_LINES) return notify('A request holds up to ' + MAX_LINES + ' different items. Remove one to add another.');
-    if (!line) { var who = a.holders[0].who; state.cart[k] = { who: who, qty: Math.min(maxFor(a, who), a.stack > 1 ? Math.min(a.stack, 20) : 1) }; }
+    if (!line) { var who = holderOf(a, state.donor).who; state.cart[k] = { who: who, qty: Math.min(maxFor(a, who), a.stack > 1 ? Math.min(a.stack, 20) : 1) }; }
     else if (line.qty >= maxFor(a, line.who)) return notify(line.who + ' has ' + holderOf(a, line.who).count + ' × ' + a.name + '. One request can ask for up to ' + maxFor(a, line.who) + '.');
     else line.qty++;
     notify(''); renderOrder();
@@ -828,8 +837,10 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     var root = $('catalog'), groups = {}, order = [], f = state.filter.toLowerCase(), stacks = 0;
     root.textContent = '';
     $('statVaults').textContent = String(state.vaults.length - state.hidden.length);
+    var only = state.donor;
     state.items.forEach(function (a) {
       stacks += Math.ceil(a.total / a.stack);
+      if (only && !a.holders.some(function (h) { return h.who === only; })) return;
       if (f && a.name.toLowerCase().indexOf(f) < 0) return;
       if (!groups[a.cat]) { groups[a.cat] = []; order.push(a.cat); }
       groups[a.cat].push(a);
@@ -843,10 +854,11 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
       var g = glyph(cat), grid = el('div', { class: 'grid' });
       groups[cat].forEach(function (a) {
         var url = 'https://www.wowhead.com/wotlk/item=' + a.id;
-        var donors = a.holders.length === 1 ? a.holders[0].who : a.holders.length + ' donors';
-        var on = a.holders.some(function (h) { return isOnline(h.who); });
+        var mine = only ? holderOf(a, only) : null;
+        var donors = mine ? mine.who : a.holders.length === 1 ? a.holders[0].who : a.holders.length + ' donors';
+        var on = mine ? isOnline(mine.who) : a.holders.some(function (h) { return isOnline(h.who); });
         grid.appendChild(el('div', { class: 'item', on: { contextmenu: function (e) { e.preventDefault(); addToCart(a.key); } } }, [
-          el('a', { class: 'tile q' + a.q, href: url, target: '_blank', rel: 'noopener', 'aria-hidden': 'true', tabindex: '-1' }, [iconNode(a, g), el('span', { class: 'cnt', text: String(a.total) })]),
+          el('a', { class: 'tile q' + a.q, href: url, target: '_blank', rel: 'noopener', 'aria-hidden': 'true', tabindex: '-1' }, [iconNode(a, g), el('span', { class: 'cnt', text: String(mine ? mine.count : a.total) })]),
           el('a', { class: 'nm q' + a.q, href: url, target: '_blank', rel: 'noopener', text: a.name }),
           el('span', { class: 'holders' }, [on ? dot() : null, document.createTextNode(donors)]),
           el('button', { class: 'btn sm', type: 'button', 'aria-label': 'Add ' + a.name + ' to request', text: '+', on: { click: function () { addToCart(a.key); } } })
@@ -858,8 +870,19 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
       root.appendChild(sec);
     });
     if (!order.length) root.appendChild(el('p', { class: 'empty', text: !state.mask ? 'Tick your challenges above.'
-      : f ? 'No item matches "' + state.filter + '".'
+      : f ? 'No item matches "' + state.filter + '"' + (only ? ' in ' + only + "'s list." : '.')
       : 'Nobody running ' + modeName(state.mask) + ' has shared an inventory yet. Be the first: press Share your inventory on the right.' }));
+  }
+  // Donor filter: "All donors" plus one entry per donor of the current challenge set.
+  function renderDonors() {
+    var sel = $('donorFilter'), names = {}, list = [];
+    state.items.forEach(function (a) { a.holders.forEach(function (h) { if (!names[h.who]) { names[h.who] = 0; list.push(h.who); } names[h.who]++; }); });
+    list.sort(function (x, y) { return x.localeCompare(y); });
+    if (list.indexOf(state.donor) < 0) state.donor = '';
+    sel.textContent = '';
+    sel.appendChild(el('option', { value: '', text: 'All donors (' + list.length + ')' }));
+    list.forEach(function (w) { sel.appendChild(el('option', { value: w, text: w + ' (' + names[w] + (names[w] === 1 ? ' item)' : ' items)') })); });
+    sel.value = state.donor; sel.hidden = list.length < 2;
   }
   function renderOrder() {
     var ul = $('lines'), keys = Object.keys(state.cart); ul.textContent = '';
@@ -1059,7 +1082,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
       if (seq !== loadSeq) return;
       state.error = 'The vault could not be loaded. Check your connection and reload the page.';
     }
-    state.loading = false; aggregate(); renderCatalog(); renderOrder();
+    state.loading = false; aggregate(); renderDonors(); renderCatalog(); renderOrder();
     loadLog(); loadOnline();
   }
 
@@ -1100,6 +1123,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     });
   });
   $('search').addEventListener('input', function (e) { state.filter = e.target.value.trim(); renderCatalog(); });
+  $('donorFilter').addEventListener('change', function (e) { state.donor = e.target.value; renderCatalog(); });
   $('confirm').addEventListener('click', prepare);
   var shareDlg = $('share');
   function openShare(e) { if (e) e.preventDefault(); if (shareDlg.open) return; if (shareDlg.showModal) shareDlg.showModal(); else shareDlg.setAttribute('open', ''); }

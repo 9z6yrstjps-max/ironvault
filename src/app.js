@@ -21,7 +21,7 @@
   /*ICONS_DATA*/
   /*DEMO_DATA*/
 
-  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', log: null, online: null, fallen: {}, hidden: [] };
+  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [] };
   var share = null;            // parsed export waiting to be uploaded
   var demoVaults = [], demoLog = [];   // demo mode only
   var $ = function (id) { return document.getElementById(id); };
@@ -362,7 +362,7 @@
     var a = byKey(k); if (!a) return;
     var line = state.cart[k];
     if (!line && Object.keys(state.cart).length >= MAX_LINES) return notify('A request holds up to ' + MAX_LINES + ' different items. Remove one to add another.');
-    if (!line) { var who = a.holders[0].who; state.cart[k] = { who: who, qty: Math.min(maxFor(a, who), a.stack > 1 ? Math.min(a.stack, 20) : 1) }; }
+    if (!line) { var who = holderOf(a, state.donor).who; state.cart[k] = { who: who, qty: Math.min(maxFor(a, who), a.stack > 1 ? Math.min(a.stack, 20) : 1) }; }
     else if (line.qty >= maxFor(a, line.who)) return notify(line.who + ' has ' + holderOf(a, line.who).count + ' × ' + a.name + '. One request can ask for up to ' + maxFor(a, line.who) + '.');
     else line.qty++;
     notify(''); renderOrder();
@@ -383,8 +383,10 @@
     var root = $('catalog'), groups = {}, order = [], f = state.filter.toLowerCase(), stacks = 0;
     root.textContent = '';
     $('statVaults').textContent = String(state.vaults.length - state.hidden.length);
+    var only = state.donor;
     state.items.forEach(function (a) {
       stacks += Math.ceil(a.total / a.stack);
+      if (only && !a.holders.some(function (h) { return h.who === only; })) return;
       if (f && a.name.toLowerCase().indexOf(f) < 0) return;
       if (!groups[a.cat]) { groups[a.cat] = []; order.push(a.cat); }
       groups[a.cat].push(a);
@@ -398,10 +400,11 @@
       var g = glyph(cat), grid = el('div', { class: 'grid' });
       groups[cat].forEach(function (a) {
         var url = 'https://www.wowhead.com/wotlk/item=' + a.id;
-        var donors = a.holders.length === 1 ? a.holders[0].who : a.holders.length + ' donors';
-        var on = a.holders.some(function (h) { return isOnline(h.who); });
+        var mine = only ? holderOf(a, only) : null;
+        var donors = mine ? mine.who : a.holders.length === 1 ? a.holders[0].who : a.holders.length + ' donors';
+        var on = mine ? isOnline(mine.who) : a.holders.some(function (h) { return isOnline(h.who); });
         grid.appendChild(el('div', { class: 'item', on: { contextmenu: function (e) { e.preventDefault(); addToCart(a.key); } } }, [
-          el('a', { class: 'tile q' + a.q, href: url, target: '_blank', rel: 'noopener', 'aria-hidden': 'true', tabindex: '-1' }, [iconNode(a, g), el('span', { class: 'cnt', text: String(a.total) })]),
+          el('a', { class: 'tile q' + a.q, href: url, target: '_blank', rel: 'noopener', 'aria-hidden': 'true', tabindex: '-1' }, [iconNode(a, g), el('span', { class: 'cnt', text: String(mine ? mine.count : a.total) })]),
           el('a', { class: 'nm q' + a.q, href: url, target: '_blank', rel: 'noopener', text: a.name }),
           el('span', { class: 'holders' }, [on ? dot() : null, document.createTextNode(donors)]),
           el('button', { class: 'btn sm', type: 'button', 'aria-label': 'Add ' + a.name + ' to request', text: '+', on: { click: function () { addToCart(a.key); } } })
@@ -413,8 +416,19 @@
       root.appendChild(sec);
     });
     if (!order.length) root.appendChild(el('p', { class: 'empty', text: !state.mask ? 'Tick your challenges above.'
-      : f ? 'No item matches "' + state.filter + '".'
+      : f ? 'No item matches "' + state.filter + '"' + (only ? ' in ' + only + "'s list." : '.')
       : 'Nobody running ' + modeName(state.mask) + ' has shared an inventory yet. Be the first: press Share your inventory on the right.' }));
+  }
+  // Donor filter: "All donors" plus one entry per donor of the current challenge set.
+  function renderDonors() {
+    var sel = $('donorFilter'), names = {}, list = [];
+    state.items.forEach(function (a) { a.holders.forEach(function (h) { if (!names[h.who]) { names[h.who] = 0; list.push(h.who); } names[h.who]++; }); });
+    list.sort(function (x, y) { return x.localeCompare(y); });
+    if (list.indexOf(state.donor) < 0) state.donor = '';
+    sel.textContent = '';
+    sel.appendChild(el('option', { value: '', text: 'All donors (' + list.length + ')' }));
+    list.forEach(function (w) { sel.appendChild(el('option', { value: w, text: w + ' (' + names[w] + (names[w] === 1 ? ' item)' : ' items)') })); });
+    sel.value = state.donor; sel.hidden = list.length < 2;
   }
   function renderOrder() {
     var ul = $('lines'), keys = Object.keys(state.cart); ul.textContent = '';
@@ -614,7 +628,7 @@
       if (seq !== loadSeq) return;
       state.error = 'The vault could not be loaded. Check your connection and reload the page.';
     }
-    state.loading = false; aggregate(); renderCatalog(); renderOrder();
+    state.loading = false; aggregate(); renderDonors(); renderCatalog(); renderOrder();
     loadLog(); loadOnline();
   }
 
@@ -655,6 +669,7 @@
     });
   });
   $('search').addEventListener('input', function (e) { state.filter = e.target.value.trim(); renderCatalog(); });
+  $('donorFilter').addEventListener('change', function (e) { state.donor = e.target.value; renderCatalog(); });
   $('confirm').addEventListener('click', prepare);
   var shareDlg = $('share');
   function openShare(e) { if (e) e.preventDefault(); if (shareDlg.open) return; if (shareDlg.showModal) shareDlg.showModal(); else shareDlg.setAttribute('open', ''); }
