@@ -135,7 +135,9 @@
       if (it) items.push(it); else bad++;
     });
     items.sort(function (a, b) { return a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name); });
-    return { character: cleanName(h[1]), date: h[3] || '', race: raceKey(h[4]), gender: genderKey(h[5]), items: items, bad: bad };
+    // h[6] exists from addon 0.4: when the bank was last seen, empty if it never was.
+    return { character: cleanName(h[1]), date: h[3] || '', race: raceKey(h[4]), gender: genderKey(h[5]), items: items, bad: bad,
+      bank: h.length > 6 ? h[6] : null };
   }
 
   /* ---------- data: Supabase when configured, in-page demo otherwise ---------- */
@@ -762,6 +764,138 @@
     btn.disabled = false;
   }
 
+  /* ---------- automatic updates: reading the addon's saved settings file (Chrome and Edge) ---------- */
+  // The game writes WTF/Account/<account>/SavedVariables/IronVault.lua at logout. Once the visitor has chosen that
+  // file, the page reads it again whenever it changes and refreshes the lists this browser holds a vault code for.
+  var FS_OK = typeof window.showOpenFilePicker === 'function';
+  var sync = { handle: null, stamp: -1, busy: false, paused: false, line: '' };
+  function idb(mode, fn) {
+    return new Promise(function (done) {
+      try {
+        var open = indexedDB.open('ironvault', 1);
+        open.onupgradeneeded = function () { open.result.createObjectStore('kv'); };
+        open.onerror = function () { done(null); };
+        open.onsuccess = function () {
+          try {
+            var tx = open.result.transaction('kv', mode), rq = fn(tx.objectStore('kv'));
+            tx.oncomplete = function () { done(rq ? rq.result : null); };
+            tx.onerror = tx.onabort = function () { done(null); };
+          } catch (e) { done(null); }
+        };
+      } catch (e) { done(null); }
+    });
+  }
+  // A Lua string literal as the game writes it, turned back into text.
+  function luaString(raw) {
+    var bytes = [], enc = new TextEncoder(), i = 0, map = { n: 10, r: 13, t: 9, '\n': 10, '\r': 10 };
+    while (i < raw.length) {
+      var ch = raw.charAt(i);
+      if (ch !== '\\') { enc.encode(ch).forEach(function (b) { bytes.push(b); }); i++; continue; }
+      var d = /^\d{1,3}/.exec(raw.slice(i + 1));
+      if (d) { bytes.push(parseInt(d[0], 10) & 255); i += 1 + d[0].length; continue; }
+      var nx = raw.charAt(i + 1);
+      if (map[nx]) bytes.push(map[nx]); else enc.encode(nx).forEach(function (b) { bytes.push(b); });
+      i += 2;
+    }
+    return new TextDecoder().decode(new Uint8Array(bytes));
+  }
+  // Every export found in the file, newest one per character.
+  function exportsIn(text) {
+    var re = /"(IRONVAULT1\^(?:[^"\\]|\\[\s\S])*)"/g, m, by = {};
+    while ((m = re.exec(text))) {
+      try {
+        var raw = luaString(m[1]), ex = parseExport(raw); ex.text = raw;
+        var old = by[ex.character];
+        if (!old || String(ex.date) >= String(old.date)) by[ex.character] = ex;
+      } catch (e) {}
+    }
+    return Object.keys(by).sort().map(function (k) { return by[k]; });
+  }
+  async function vaultOf(name) {
+    if (!LIVE) return demoVaults.filter(function (v) { return v.character === name; })[0] || null;
+    var r = await fetch(API_URL + '/rest/v1/vaults?select=character,mask,note,race,gender&character=eq.' + encodeURIComponent(name) + '&limit=1', { headers: headers() });
+    if (!r.ok) throw new Error('load_failed');
+    return (await r.json())[0] || null;
+  }
+  function renderSync() {
+    var box = $('autoBox'); box.hidden = !FS_OK; $('autoNo').hidden = FS_OK;
+    $('autoPick').textContent = sync.handle ? 'Choose another file' : 'Choose IronVault.lua';
+    $('autoStop').hidden = !sync.handle;
+    var line = $('syncLine'); line.textContent = ''; line.hidden = !sync.handle;
+    if (!sync.handle) return;
+    if (sync.paused) {
+      line.appendChild(document.createTextNode('Automatic updates are paused: the browser needs your permission to read the addon file again. '));
+      line.appendChild(el('button', { class: 'btn xs', type: 'button', text: 'Resume', on: { click: resumeSync } }));
+    } else line.textContent = 'Automatic updates on. ' + sync.line;
+    $('autoMsg').textContent = sync.paused ? 'Paused: press Resume next to Share your inventory.' : sync.line;
+  }
+  // Reads the file if it changed and uploads what is new. Returns the exports that have no list yet.
+  async function syncRead(force) {
+    if (!sync.handle || sync.busy) return [];
+    sync.busy = true;
+    var fresh = [], done = [], notes = [];
+    try {
+      var perm = sync.handle.queryPermission ? await sync.handle.queryPermission({ mode: 'read' }) : 'granted';
+      sync.paused = perm !== 'granted';
+      if (sync.paused) return fresh;
+      var file = await sync.handle.getFile();
+      if (!force && file.lastModified === sync.stamp) return fresh;
+      sync.stamp = file.lastModified;
+      var list = exportsIn(await file.text()), skip = skipSet();
+      if (!list.length) notes.push('No export in that file yet: log in with addon 0.4 or newer, then log out.');
+      for (var i = 0; i < list.length; i++) {
+        var ex = list[i], key = ex.character.toLowerCase(), code = lsGet('ironvault.code.' + key);
+        if (!code) { fresh.push(ex); continue; }
+        var sig = ex.date + '/' + ex.text.length;
+        if (lsGet('ironvault.sync.' + key) === sig) continue;
+        if (ex.bank === '') { notes.push(ex.character + ': open the bank once in game, so the list includes it.'); continue; }
+        try {
+          var v = await vaultOf(ex.character);
+          if (!v) { fresh.push(ex); continue; }
+          var items = ex.items.filter(function (it) { return !skip[it.id + ':' + it.suffix] && !((v.mask & 2) && isLockedGear(it)); })
+            .map(function (it) { return [it.id, it.suffix, it.count, it.q, it.stack, it.equip, it.icon, it.type, it.sub, it.name]; });
+          if (!items.length) { notes.push(ex.character + ': nothing to offer in the last export.'); continue; }
+          await apiUpload({ character: ex.character, mask: v.mask, items: items, code: code, note: String(v.note || ''),
+            race: ex.race || raceKey(v.race), gender: ex.gender || genderKey(v.gender) });
+          lsSet('ironvault.sync.' + key, sig); done.push(ex.character);
+        } catch (e) { notes.push(ex.character + ': ' + (e.message === 'wrong_code' ? 'the vault code saved in this browser no longer matches.' : 'upload failed, will retry.')); if (e.message !== 'wrong_code') sync.stamp = -1; }
+      }
+      if (done.length) { notes.unshift('Updated ' + done.join(', ') + ' at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '.'); load(); }
+      if (fresh.length) notes.push(fresh.map(function (x) { return x.character; }).join(', ') + ': no list from this browser yet, upload it once by hand.');
+      if (notes.length || force) sync.line = notes.join(' ') || 'Nothing new since the last upload.';
+    } catch (e) { sync.line = 'The addon file could not be read. Choose it again under Share your inventory.'; }
+    finally { sync.busy = false; renderSync(); }
+    return fresh;
+  }
+  async function pickSync() {
+    var got;
+    try { got = await window.showOpenFilePicker({ types: [{ description: 'IronVault saved settings', accept: { 'text/plain': ['.lua'] } }] }); }
+    catch (e) { return; }   // picker closed
+    sync.handle = got[0]; sync.stamp = -1; sync.paused = false; sync.line = '';
+    await idb('readwrite', function (st) { return st.put(sync.handle, 'file'); });
+    var fresh = await syncRead(true);
+    // A character with no list yet: put its export in the box, ready for its first upload.
+    if (fresh.length) { $('importText').value = fresh[0].text; readExport(); }
+  }
+  async function stopSync() {
+    sync.handle = null; sync.line = '';
+    await idb('readwrite', function (st) { return st.delete('file'); });
+    renderSync();
+  }
+  async function resumeSync() {
+    try { if (sync.handle.requestPermission) await sync.handle.requestPermission({ mode: 'read' }); } catch (e) {}
+    sync.stamp = -1; syncRead(true);
+  }
+  async function startSync() {
+    renderSync();
+    if (!FS_OK) return;
+    var h = await idb('readonly', function (st) { return st.get('file'); });
+    if (!h || typeof h.getFile !== 'function') return;
+    sync.handle = h; await syncRead(true);
+  }
+  setInterval(function () { if (!document.hidden && sync.handle && !sync.paused) syncRead(false); }, 30000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && sync.handle) syncRead(false); });
+
   var loadSeq = 0;
   async function load() {
     var seq = ++loadSeq;
@@ -843,6 +977,8 @@
     if (!$('inbox').hidden) $('inbox').scrollIntoView({ block: 'start' });
   });
   $('inBtn').addEventListener('click', signIn);
+  $('autoPick').addEventListener('click', pickSync);
+  $('autoStop').addEventListener('click', stopSync);
   $('closeBtn').addEventListener('click', function () { $('done').close(); });
   $('readBtn').addEventListener('click', readExport);
   $('uploadBtn').addEventListener('click', upload);
@@ -859,5 +995,5 @@
   fillRaces($('myRace'), true); fillRaces($('shareRace'), true);
   $('myRace').value = raceKey(lsGet('ironvault.race')); $('myGender').value = genderKey(lsGet('ironvault.gender')) || 'male';
   if (!LIVE) { buildDemo(); $('modePill').hidden = false; state.delivery = true; }
-  load(); lookupMe();
+  load(); lookupMe(); startSync();
 })();

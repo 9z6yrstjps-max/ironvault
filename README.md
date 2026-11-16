@@ -18,7 +18,7 @@ Sito statico (GitHub Pages) + database Supabase. Nessun account richiesto ai gio
 | `supabase/migration-003-inbox.sql` | Da eseguire dopo la 002: richieste in attesa per i donatori e conferma di consegna (`delivered_at`, `mark_request()`). |
 | `supabase/migration-004-cancel.sql` | Da eseguire dopo la 003: annullamento delle richieste da parte di chi le ha fatte o del donatore (`cancel_request()`). |
 | `supabase/migration-005-stock.sql` | Da eseguire dopo la 004: segnare una richiesta come consegnata scala gli oggetti dalla lista del donatore. |
-| `addon/IronVault/` | Addon per il client 3.3.5a. `IronVault.zip` è lo stesso addon pronto da scaricare dal sito. |
+| `addon/IronVault/` | Addon per il client 3.3.5a. `IronVault.zip` è lo stesso addon pronto da scaricare dal sito. Dalla 0.4 salva l'export da solo a ogni uscita dal gioco (`IronVaultDB.chars[nome].export` nel file SavedVariables), che il sito può leggere per aggiornare le liste (Chrome/Edge). |
 | `src/` | Sorgenti della pagina (HTML, CSS, JavaScript, icone, dati demo). |
 
 ## Messa in linea

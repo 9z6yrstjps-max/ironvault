@@ -273,6 +273,13 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
 .tag.ok { border-color: var(--ok); color: var(--ok); }
 .side section.inbox[hidden] { display: none; }
 .log-row .row { margin: 0; gap: 8px; align-items: center; }
+
+/* Automatic updates from the addon's saved file. */
+details.auto { margin: 4px 0 12px; border: 1px solid var(--steel); border-radius: 4px; padding: 8px 12px; background: var(--panel); }
+details.auto summary { cursor: pointer; color: var(--frost); font-weight: 600; }
+details.auto p { margin: 8px 0; }
+.side .sync { margin: -8px 0 0; font-size: .85rem; }
+.side .sync[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -334,6 +341,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
               <li>Install the <a href="IronVault.zip">IronVault addon</a> (unzip it into <code>Interface/AddOns</code>) and type <code>/ivault</code> on the character that holds your spare items.</li>
               <li>Copy the text, paste it under Share your inventory and untick anything you want to keep.</li>
               <li>Upload. Keep the code you receive: it is the only way to update or remove your list.</li>
+              <li>Later updates can be automatic: see Automatic updates under Share your inventory (Chrome or Edge).</li>
               <li>Check Requests for you on this page to see who asked for what, and mark each request as delivered once the items are on their way. You can also remove a request you will not fulfil.</li>
             </ol>
           </div>
@@ -355,6 +363,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
 
     <div class="side">
     <button class="btn ghost wide" id="shareOpen" type="button">Share your inventory</button>
+    <p class="hint sync" id="syncLine" hidden></p>
     <section class="frame log inbox" id="inbox" aria-labelledby="inboxTitle" hidden>
       <h2 id="inboxTitle">Requests for you <span class="badge" id="inboxCount" hidden></span></h2>
       <p class="hint" id="inboxHint"></p>
@@ -411,6 +420,19 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     <p class="hint">Paste the text from <code>/ivault</code>. Nothing is uploaded until you press Upload inventory.</p>
     <textarea class="field" id="importText" aria-label="Addon export text" placeholder="IRONVAULT1^Yourcharacter^0^2026-11-15 00:10&#10;929^0^120^1^20^^inv_potion_51^Consumable^Potion^Healing Potion"></textarea>
     <div class="row"><button class="btn" id="readBtn" type="button">Read export</button></div>
+
+    <details class="auto" id="autoWrap">
+      <summary>Automatic updates</summary>
+      <p class="hint">With addon 0.4 or newer the game saves your inventory by itself every time you log out. Choose the file <code>WTF/Account/YOUR-ACCOUNT/SavedVariables/IronVault.lua</code> in your game folder once: while this page is open, the lists you already uploaded from this browser are refreshed after each logout. The first upload of a character is still done by hand.</p>
+      <div id="autoBox" hidden>
+        <div class="row">
+          <button class="btn ghost" id="autoPick" type="button">Choose IronVault.lua</button>
+          <button class="btn ghost" id="autoStop" type="button" hidden>Stop automatic updates</button>
+        </div>
+        <p class="hint" id="autoMsg" aria-live="polite"></p>
+      </div>
+      <p class="hint" id="autoNo" hidden>This needs Chrome or Edge on a computer. In this browser, keep using <code>/ivault</code> and paste.</p>
+    </details>
 
     <div id="sharePrep" hidden>
       <p>Character: <b id="shareChar"></b> <span class="hint" id="shareDate"></span></p>
@@ -627,7 +649,9 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
       if (it) items.push(it); else bad++;
     });
     items.sort(function (a, b) { return a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name); });
-    return { character: cleanName(h[1]), date: h[3] || '', race: raceKey(h[4]), gender: genderKey(h[5]), items: items, bad: bad };
+    // h[6] exists from addon 0.4: when the bank was last seen, empty if it never was.
+    return { character: cleanName(h[1]), date: h[3] || '', race: raceKey(h[4]), gender: genderKey(h[5]), items: items, bad: bad,
+      bank: h.length > 6 ? h[6] : null };
   }
 
   /* ---------- data: Supabase when configured, in-page demo otherwise ---------- */
@@ -1254,6 +1278,138 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     btn.disabled = false;
   }
 
+  /* ---------- automatic updates: reading the addon's saved settings file (Chrome and Edge) ---------- */
+  // The game writes WTF/Account/<account>/SavedVariables/IronVault.lua at logout. Once the visitor has chosen that
+  // file, the page reads it again whenever it changes and refreshes the lists this browser holds a vault code for.
+  var FS_OK = typeof window.showOpenFilePicker === 'function';
+  var sync = { handle: null, stamp: -1, busy: false, paused: false, line: '' };
+  function idb(mode, fn) {
+    return new Promise(function (done) {
+      try {
+        var open = indexedDB.open('ironvault', 1);
+        open.onupgradeneeded = function () { open.result.createObjectStore('kv'); };
+        open.onerror = function () { done(null); };
+        open.onsuccess = function () {
+          try {
+            var tx = open.result.transaction('kv', mode), rq = fn(tx.objectStore('kv'));
+            tx.oncomplete = function () { done(rq ? rq.result : null); };
+            tx.onerror = tx.onabort = function () { done(null); };
+          } catch (e) { done(null); }
+        };
+      } catch (e) { done(null); }
+    });
+  }
+  // A Lua string literal as the game writes it, turned back into text.
+  function luaString(raw) {
+    var bytes = [], enc = new TextEncoder(), i = 0, map = { n: 10, r: 13, t: 9, '\n': 10, '\r': 10 };
+    while (i < raw.length) {
+      var ch = raw.charAt(i);
+      if (ch !== '\\') { enc.encode(ch).forEach(function (b) { bytes.push(b); }); i++; continue; }
+      var d = /^\d{1,3}/.exec(raw.slice(i + 1));
+      if (d) { bytes.push(parseInt(d[0], 10) & 255); i += 1 + d[0].length; continue; }
+      var nx = raw.charAt(i + 1);
+      if (map[nx]) bytes.push(map[nx]); else enc.encode(nx).forEach(function (b) { bytes.push(b); });
+      i += 2;
+    }
+    return new TextDecoder().decode(new Uint8Array(bytes));
+  }
+  // Every export found in the file, newest one per character.
+  function exportsIn(text) {
+    var re = /"(IRONVAULT1\^(?:[^"\\]|\\[\s\S])*)"/g, m, by = {};
+    while ((m = re.exec(text))) {
+      try {
+        var raw = luaString(m[1]), ex = parseExport(raw); ex.text = raw;
+        var old = by[ex.character];
+        if (!old || String(ex.date) >= String(old.date)) by[ex.character] = ex;
+      } catch (e) {}
+    }
+    return Object.keys(by).sort().map(function (k) { return by[k]; });
+  }
+  async function vaultOf(name) {
+    if (!LIVE) return demoVaults.filter(function (v) { return v.character === name; })[0] || null;
+    var r = await fetch(API_URL + '/rest/v1/vaults?select=character,mask,note,race,gender&character=eq.' + encodeURIComponent(name) + '&limit=1', { headers: headers() });
+    if (!r.ok) throw new Error('load_failed');
+    return (await r.json())[0] || null;
+  }
+  function renderSync() {
+    var box = $('autoBox'); box.hidden = !FS_OK; $('autoNo').hidden = FS_OK;
+    $('autoPick').textContent = sync.handle ? 'Choose another file' : 'Choose IronVault.lua';
+    $('autoStop').hidden = !sync.handle;
+    var line = $('syncLine'); line.textContent = ''; line.hidden = !sync.handle;
+    if (!sync.handle) return;
+    if (sync.paused) {
+      line.appendChild(document.createTextNode('Automatic updates are paused: the browser needs your permission to read the addon file again. '));
+      line.appendChild(el('button', { class: 'btn xs', type: 'button', text: 'Resume', on: { click: resumeSync } }));
+    } else line.textContent = 'Automatic updates on. ' + sync.line;
+    $('autoMsg').textContent = sync.paused ? 'Paused: press Resume next to Share your inventory.' : sync.line;
+  }
+  // Reads the file if it changed and uploads what is new. Returns the exports that have no list yet.
+  async function syncRead(force) {
+    if (!sync.handle || sync.busy) return [];
+    sync.busy = true;
+    var fresh = [], done = [], notes = [];
+    try {
+      var perm = sync.handle.queryPermission ? await sync.handle.queryPermission({ mode: 'read' }) : 'granted';
+      sync.paused = perm !== 'granted';
+      if (sync.paused) return fresh;
+      var file = await sync.handle.getFile();
+      if (!force && file.lastModified === sync.stamp) return fresh;
+      sync.stamp = file.lastModified;
+      var list = exportsIn(await file.text()), skip = skipSet();
+      if (!list.length) notes.push('No export in that file yet: log in with addon 0.4 or newer, then log out.');
+      for (var i = 0; i < list.length; i++) {
+        var ex = list[i], key = ex.character.toLowerCase(), code = lsGet('ironvault.code.' + key);
+        if (!code) { fresh.push(ex); continue; }
+        var sig = ex.date + '/' + ex.text.length;
+        if (lsGet('ironvault.sync.' + key) === sig) continue;
+        if (ex.bank === '') { notes.push(ex.character + ': open the bank once in game, so the list includes it.'); continue; }
+        try {
+          var v = await vaultOf(ex.character);
+          if (!v) { fresh.push(ex); continue; }
+          var items = ex.items.filter(function (it) { return !skip[it.id + ':' + it.suffix] && !((v.mask & 2) && isLockedGear(it)); })
+            .map(function (it) { return [it.id, it.suffix, it.count, it.q, it.stack, it.equip, it.icon, it.type, it.sub, it.name]; });
+          if (!items.length) { notes.push(ex.character + ': nothing to offer in the last export.'); continue; }
+          await apiUpload({ character: ex.character, mask: v.mask, items: items, code: code, note: String(v.note || ''),
+            race: ex.race || raceKey(v.race), gender: ex.gender || genderKey(v.gender) });
+          lsSet('ironvault.sync.' + key, sig); done.push(ex.character);
+        } catch (e) { notes.push(ex.character + ': ' + (e.message === 'wrong_code' ? 'the vault code saved in this browser no longer matches.' : 'upload failed, will retry.')); if (e.message !== 'wrong_code') sync.stamp = -1; }
+      }
+      if (done.length) { notes.unshift('Updated ' + done.join(', ') + ' at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '.'); load(); }
+      if (fresh.length) notes.push(fresh.map(function (x) { return x.character; }).join(', ') + ': no list from this browser yet, upload it once by hand.');
+      if (notes.length || force) sync.line = notes.join(' ') || 'Nothing new since the last upload.';
+    } catch (e) { sync.line = 'The addon file could not be read. Choose it again under Share your inventory.'; }
+    finally { sync.busy = false; renderSync(); }
+    return fresh;
+  }
+  async function pickSync() {
+    var got;
+    try { got = await window.showOpenFilePicker({ types: [{ description: 'IronVault saved settings', accept: { 'text/plain': ['.lua'] } }] }); }
+    catch (e) { return; }   // picker closed
+    sync.handle = got[0]; sync.stamp = -1; sync.paused = false; sync.line = '';
+    await idb('readwrite', function (st) { return st.put(sync.handle, 'file'); });
+    var fresh = await syncRead(true);
+    // A character with no list yet: put its export in the box, ready for its first upload.
+    if (fresh.length) { $('importText').value = fresh[0].text; readExport(); }
+  }
+  async function stopSync() {
+    sync.handle = null; sync.line = '';
+    await idb('readwrite', function (st) { return st.delete('file'); });
+    renderSync();
+  }
+  async function resumeSync() {
+    try { if (sync.handle.requestPermission) await sync.handle.requestPermission({ mode: 'read' }); } catch (e) {}
+    sync.stamp = -1; syncRead(true);
+  }
+  async function startSync() {
+    renderSync();
+    if (!FS_OK) return;
+    var h = await idb('readonly', function (st) { return st.get('file'); });
+    if (!h || typeof h.getFile !== 'function') return;
+    sync.handle = h; await syncRead(true);
+  }
+  setInterval(function () { if (!document.hidden && sync.handle && !sync.paused) syncRead(false); }, 30000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && sync.handle) syncRead(false); });
+
   var loadSeq = 0;
   async function load() {
     var seq = ++loadSeq;
@@ -1335,6 +1491,8 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     if (!$('inbox').hidden) $('inbox').scrollIntoView({ block: 'start' });
   });
   $('inBtn').addEventListener('click', signIn);
+  $('autoPick').addEventListener('click', pickSync);
+  $('autoStop').addEventListener('click', stopSync);
   $('closeBtn').addEventListener('click', function () { $('done').close(); });
   $('readBtn').addEventListener('click', readExport);
   $('uploadBtn').addEventListener('click', upload);
@@ -1351,7 +1509,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
   fillRaces($('myRace'), true); fillRaces($('shareRace'), true);
   $('myRace').value = raceKey(lsGet('ironvault.race')); $('myGender').value = genderKey(lsGet('ironvault.gender')) || 'male';
   if (!LIVE) { buildDemo(); $('modePill').hidden = false; state.delivery = true; }
-  load(); lookupMe();
+  load(); lookupMe(); startSync();
 })();
 </script>
 </body>

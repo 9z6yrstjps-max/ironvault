@@ -1,15 +1,38 @@
--- IronVault 0.3 (WoW 3.3.5a)
--- Read-only: it scans bags and bank and shows the result as text to copy.
--- It never moves items, sends mail or presses anything for you.
+-- IronVault 0.4 (WoW 3.3.5a)
+-- Read-only: it scans bags and bank and keeps the result as text, shown by /ivault and saved with the
+-- addon's settings. It never moves items, sends mail or presses anything for you.
 --
 -- Export format, one record per line, fields separated by "^":
---   IRONVAULT1^character^copper^date^race^sex   (race as the client names it, e.g. NightElf; sex male/female)
+--   IRONVAULT1^character^copper^date^race^sex^bankSeen
+--     (race as the client names it, e.g. NightElf; sex male/female; bankSeen empty until the bank was opened once)
 --   itemId^suffixId^count^quality^stackSize^equipSlot^icon^type^subtype^name
+--
+-- Saved settings (WTF/Account/<account>/SavedVariables/IronVault.lua), written by the game at logout or /reload:
+--   IronVaultDB.chars[character] = { export = <text above>, bank = <items seen in the bank>, bankSeen = <date> }
+-- The Iron Vault site can read that file to refresh a list without copying anything.
 
 IronVaultDB = IronVaultDB or {}
 
 local bankOpen = false
+local ready = false
+local pending = nil     -- seconds left before the saved export is rebuilt
 local win, edit
+
+-- This character's own record. Each character keeps its own bank contents and export.
+local function mine()
+  local name = UnitName("player")
+  if not name or name == "" or name == UNKNOWNOBJECT then
+    return nil
+  end
+  IronVaultDB = IronVaultDB or {}
+  IronVaultDB.chars = IronVaultDB.chars or {}
+  local c = IronVaultDB.chars[name]
+  if not c then
+    c = {}
+    IronVaultDB.chars[name] = c
+  end
+  return c
+end
 
 local function say(msg)
   DEFAULT_CHAT_FRAME:AddMessage("|cff69ccf0IronVault|r: " .. msg)
@@ -69,9 +92,11 @@ local function scanBank()
   for bag = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
     scanBag(bag, bank)
   end
-  IronVaultDB = IronVaultDB or {}
-  IronVaultDB.bank = bank
-  IronVaultDB.bankSeen = date("%Y-%m-%d %H:%M")
+  local c = mine()
+  if c then
+    c.bank = bank
+    c.bankSeen = date("%Y-%m-%d %H:%M")
+  end
 end
 
 local function clean(s)
@@ -86,7 +111,8 @@ local function buildExport()
   if bankOpen then
     scanBank()
   end
-  local bank = IronVaultDB and IronVaultDB.bank
+  local c = mine()
+  local bank = c and c.bank
   if bank then
     for key, rec in pairs(bank) do
       local a = all[key]
@@ -118,7 +144,8 @@ local function buildExport()
   local sex = UnitSex("player")   -- 2 = male, 3 = female
   local header = table.concat({
     "IRONVAULT1", UnitName("player"), GetMoney(), date("%Y-%m-%d %H:%M"),
-    clean(raceFile), sex == 3 and "female" or sex == 2 and "male" or ""
+    clean(raceFile), sex == 3 and "female" or sex == 2 and "male" or "",
+    bank and clean(c.bankSeen or "?") or ""
   }, "^")
   return header .. "\n" .. table.concat(lines, "\n"), n, bank ~= nil
 end
@@ -170,20 +197,78 @@ local function showExport(text)
   edit:HighlightText()
 end
 
+-- Rebuilds the export kept in the saved settings. Errors are swallowed: this also runs at logout.
+local function saveExport()
+  local c = mine()
+  if not c then
+    return
+  end
+  local ok, text = pcall(buildExport)
+  if ok and text then
+    c.export = text
+  end
+end
+
+-- Settings written by 0.3 had one bank for the whole account: hand it to the character that last exported.
+local function migrate()
+  IronVaultDB = IronVaultDB or {}
+  IronVaultDB.chars = IronVaultDB.chars or {}
+  if IronVaultDB.bank then
+    local owner = type(IronVaultDB.lastExport) == "string" and IronVaultDB.lastExport:match("^IRONVAULT1%^([^%^]+)")
+    if owner then
+      local c = IronVaultDB.chars[owner] or {}
+      IronVaultDB.chars[owner] = c
+      if not c.bank then
+        c.bank = IronVaultDB.bank
+        c.bankSeen = IronVaultDB.bankSeen
+      end
+    end
+  end
+  IronVaultDB.bank = nil
+  IronVaultDB.bankSeen = nil
+  IronVaultDB.lastExport = nil
+end
+
 local events = CreateFrame("Frame")
+events:RegisterEvent("PLAYER_ENTERING_WORLD")
+events:RegisterEvent("PLAYER_LOGOUT")
 events:RegisterEvent("BANKFRAME_OPENED")
 events:RegisterEvent("BANKFRAME_CLOSED")
 events:RegisterEvent("PLAYERBANKSLOTS_CHANGED")
 events:RegisterEvent("BAG_UPDATE")
 events:SetScript("OnEvent", function(self, event)
-  if event == "BANKFRAME_OPENED" then
+  if event == "PLAYER_ENTERING_WORLD" then
+    if not ready then
+      ready = true
+      migrate()
+    end
+    pending = 5
+  elseif event == "PLAYER_LOGOUT" then
+    saveExport()
+  elseif event == "BANKFRAME_OPENED" then
     bankOpen = true
     scanBank()
+    pending = 2
     say("bank scanned.")
   elseif event == "BANKFRAME_CLOSED" then
     bankOpen = false
-  elseif bankOpen then
-    scanBank()
+  else
+    if bankOpen then
+      scanBank()
+    end
+    if ready then
+      pending = 2     -- wait for the burst of bag events to end
+    end
+  end
+end)
+events:SetScript("OnUpdate", function(self, elapsed)
+  if not pending then
+    return
+  end
+  pending = pending - elapsed
+  if pending <= 0 then
+    pending = nil
+    saveExport()
   end
 end)
 
@@ -191,18 +276,25 @@ SLASH_IRONVAULT1 = "/ivault"
 SLASH_IRONVAULT2 = "/ironvault"
 SlashCmdList["IRONVAULT"] = function(msg)
   msg = string.lower(msg or "")
+  local c = mine()
   if msg == "forgetbank" then
-    IronVaultDB.bank = nil
-    IronVaultDB.bankSeen = nil
+    if c then
+      c.bank = nil
+      c.bankSeen = nil
+    end
+    pending = 1
     say("stored bank contents cleared.")
     return
   end
   local text, n, hasBank = buildExport()
-  IronVaultDB.lastExport = text
+  if c then
+    c.export = text
+  end
   showExport(text)
   if hasBank then
-    say(n .. " different items exported (bags + bank as seen " .. (IronVaultDB.bankSeen or "?") .. ").")
+    say(n .. " different items exported (bags + bank as seen " .. ((c and c.bankSeen) or "?") .. ").")
   else
     say(n .. " different items exported from bags only. Open the bank once to include it.")
   end
+  say("the same list is saved by itself when you log out; the site can read it from the addon's settings file.")
 end

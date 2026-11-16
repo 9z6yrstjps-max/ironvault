@@ -142,3 +142,10 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
 .tag.ok { border-color: var(--ok); color: var(--ok); }
 .side section.inbox[hidden] { display: none; }
 .log-row .row { margin: 0; gap: 8px; align-items: center; }
+
+/* Automatic updates from the addon's saved file. */
+details.auto { margin: 4px 0 12px; border: 1px solid var(--steel); border-radius: 4px; padding: 8px 12px; background: var(--panel); }
+details.auto summary { cursor: pointer; color: var(--frost); font-weight: 600; }
+details.auto p { margin: 8px 0; }
+.side .sync { margin: -8px 0 0; font-size: .85rem; }
+.side .sync[hidden] { display: none; }

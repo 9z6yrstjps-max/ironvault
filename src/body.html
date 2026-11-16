@@ -42,6 +42,7 @@
               <li>Install the <a href="IronVault.zip">IronVault addon</a> (unzip it into <code>Interface/AddOns</code>) and type <code>/ivault</code> on the character that holds your spare items.</li>
               <li>Copy the text, paste it under Share your inventory and untick anything you want to keep.</li>
               <li>Upload. Keep the code you receive: it is the only way to update or remove your list.</li>
+              <li>Later updates can be automatic: see Automatic updates under Share your inventory (Chrome or Edge).</li>
               <li>Check Requests for you on this page to see who asked for what, and mark each request as delivered once the items are on their way. You can also remove a request you will not fulfil.</li>
             </ol>
           </div>
@@ -63,6 +64,7 @@
 
     <div class="side">
     <button class="btn ghost wide" id="shareOpen" type="button">Share your inventory</button>
+    <p class="hint sync" id="syncLine" hidden></p>
     <section class="frame log inbox" id="inbox" aria-labelledby="inboxTitle" hidden>
       <h2 id="inboxTitle">Requests for you <span class="badge" id="inboxCount" hidden></span></h2>
       <p class="hint" id="inboxHint"></p>
@@ -119,6 +121,19 @@
     <p class="hint">Paste the text from <code>/ivault</code>. Nothing is uploaded until you press Upload inventory.</p>
     <textarea class="field" id="importText" aria-label="Addon export text" placeholder="IRONVAULT1^Yourcharacter^0^2026-11-15 00:10&#10;929^0^120^1^20^^inv_potion_51^Consumable^Potion^Healing Potion"></textarea>
     <div class="row"><button class="btn" id="readBtn" type="button">Read export</button></div>
+
+    <details class="auto" id="autoWrap">
+      <summary>Automatic updates</summary>
+      <p class="hint">With addon 0.4 or newer the game saves your inventory by itself every time you log out. Choose the file <code>WTF/Account/YOUR-ACCOUNT/SavedVariables/IronVault.lua</code> in your game folder once: while this page is open, the lists you already uploaded from this browser are refreshed after each logout. The first upload of a character is still done by hand.</p>
+      <div id="autoBox" hidden>
+        <div class="row">
+          <button class="btn ghost" id="autoPick" type="button">Choose IronVault.lua</button>
+          <button class="btn ghost" id="autoStop" type="button" hidden>Stop automatic updates</button>
+        </div>
+        <p class="hint" id="autoMsg" aria-live="polite"></p>
+      </div>
+      <p class="hint" id="autoNo" hidden>This needs Chrome or Edge on a computer. In this browser, keep using <code>/ivault</code> and paste.</p>
+    </details>
 
     <div id="sharePrep" hidden>
       <p>Character: <b id="shareChar"></b> <span class="hint" id="shareDate"></span></p>
