@@ -286,6 +286,24 @@ details.auto p { margin: 8px 0; }
   padding: 12px 16px; box-shadow: 0 0 0 1px rgba(0,0,0,.5), 0 0 14px rgba(255,209,0,.28); }
 .btn.gold:hover { background: linear-gradient(180deg, #ffe37a, #d8a900); }
 .btn.gold small { display: block; font: 400 .82rem var(--body); color: #3a2c00; margin-top: 2px; }
+
+/* Class icon next to the race portrait, and the donor cards above the catalog. */
+.cls { flex: none; width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--steel); overflow: hidden; display: inline-block; vertical-align: middle; }
+.cls img { width: 100%; height: 100%; display: block; }
+.donors { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; max-height: 232px; overflow: auto; }
+.donors[hidden] { display: none; }
+.donor { display: flex; align-items: center; gap: 10px; text-align: left; background: var(--panel); border: 1px solid var(--steel); border-radius: 6px;
+  padding: 8px 12px; color: var(--ice); font: inherit; cursor: pointer; min-width: 0; }
+.donor:hover:not(:disabled) { border-color: var(--frost); }
+.donor:disabled { cursor: default; }
+.donor[aria-pressed="true"] { border-color: var(--gold); background: #1a2c44; box-shadow: 0 0 0 1px var(--gold) inset; }
+.donor .faces { display: flex; gap: 4px; flex: none; }
+.donor .race, .donor .cls { width: 32px; height: 32px; }
+.donor .dtext { display: flex; flex-direction: column; min-width: 0; }
+.donor b { font-weight: 600; color: #fff; }
+.donor small { color: var(--mist); font-size: .8rem; line-height: 1.3; }
+.donor .dnote { font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+.donor.all { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; }
 </style>
 </head>
 <body>
@@ -349,7 +367,7 @@ details.auto p { margin: 8px 0; }
               <li>Copy the text, paste it under Share your inventory and untick anything you want to keep.</li>
               <li>Upload. Keep the code you receive: it is the only way to update or remove your list.</li>
               <li>Later updates can be automatic: see Automatic updates under Share your inventory (Chrome or Edge).</li>
-              <li>Check Requests for you on this page to see who asked for what, and mark each request as delivered once the items are on their way. You can also remove a request you will not fulfil.</li>
+              <li>Check Requests for you on this page to see who asked for what, and mark each request as delivered once the items are on their way. With automatic updates on, the addon tells the site what you mailed or traded, and matching requests are marked for you. You can also remove a request you will not fulfil.</li>
             </ol>
           </div>
           <div>
@@ -360,9 +378,9 @@ details.auto p { margin: 8px 0; }
         </div>
       </details>
 
+      <div class="donors" id="donors" role="group" aria-label="Donors: choose one to see only their items" hidden></div>
       <div class="tools">
         <input class="search" id="search" type="search" placeholder="Search items…" aria-label="Search items">
-        <select class="field" id="donorFilter" aria-label="Show one donor only" hidden><option value="">All donors</option></select>
       </div>
       <div id="catalog"></div>
 
@@ -590,6 +608,19 @@ details.auto p { margin: 8px 0; }
     }
     return svgUse(g);
   }
+  var CLASS_CDN = 'https://wow.zamimg.com/images/wow/icons/medium/classicon_';
+  var CLASS_NAMES = { warrior: 'Warrior', paladin: 'Paladin', hunter: 'Hunter', rogue: 'Rogue', priest: 'Priest', deathknight: 'Death Knight',
+    shaman: 'Shaman', mage: 'Mage', warlock: 'Warlock', druid: 'Druid' };
+  function classKey(s) { s = String(s || '').toLowerCase().replace(/[^a-z]/g, ''); return CLASS_NAMES[s] ? s : ''; }
+  // Square class icon from Wowhead's CDN; nothing when the class is unknown or the image fails.
+  function classNode(cls) {
+    var k = classKey(cls); if (!k) return null;
+    var box = el('span', { class: 'cls', title: CLASS_NAMES[k], 'aria-hidden': 'true' });
+    var img = el('img', { src: CLASS_CDN + k + '.jpg', alt: '', width: '22', height: '22', loading: 'lazy' });
+    img.addEventListener('error', function () { if (box.parentNode) box.parentNode.removeChild(box); });
+    box.appendChild(img); return box;
+  }
+  function vaultByName(name) { return state.vaults.filter(function (v) { return v.character === name; })[0] || null; }
   function raceKey(s) { s = String(s || '').toLowerCase().replace(/[^a-z]/g, ''); if (s === 'undead') s = 'scourge';
     return RACES.some(function (r) { return r[0] === s; }) ? s : ''; }
   function raceLabel(k) { var r = RACES.filter(function (x) { return x[0] === k; })[0]; return r ? r[1] : ''; }
@@ -604,8 +635,8 @@ details.auto p { margin: 8px 0; }
     img.addEventListener('error', function () { box.textContent = ''; initial(); });
     box.appendChild(img); return box;
   }
-  function whoNode(name, race, gender) {
-    return el('span', { class: 'who' }, [raceNode(race, gender, name), document.createTextNode(name), isOnline(name) ? dot() : null]);
+  function whoNode(name, race, gender, cls) {
+    return el('span', { class: 'who' }, [raceNode(race, gender, name), classNode(cls), document.createTextNode(name), isOnline(name) ? dot() : null]);
   }
   function fillRaces(sel, withBlank) {
     if (withBlank) sel.appendChild(el('option', { value: '', text: 'Not shown' }));
@@ -650,15 +681,23 @@ details.auto p { margin: 8px 0; }
     if (!lines.length || lines[0].indexOf('IRONVAULT1^') !== 0) throw new Error('This is not an IronVault export. The first line must start with IRONVAULT1.');
     var h = lines[0].split('^'), items = [], bad = 0;
     if (!validName(h[1] || '')) throw new Error('The export has no valid character name on its first line.');
+    var sent = [];
     lines.slice(1).forEach(function (l) {
       var f = l.split('^');
+      if (f[0] === 'SENT') {   // what the character mailed or traded away: SENT^recipient^time^mail|trade^id:suffix:count,...
+        if (validName(f[1] || '') && +f[2] > 0) sent.push({ to: cleanName(f[1]), t: +f[2] * 1000,
+          ids: String(f[4] || '').split(',').map(function (x) { return parseInt(x, 10); }).filter(function (n) { return n > 0; }) });
+        return;
+      }
       var it = f.length >= 10 ? norm(f.slice(0, 9).concat(f.slice(9).join('^'))) : null;
       if (it) items.push(it); else bad++;
     });
     items.sort(function (a, b) { return a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name); });
     // h[6] exists from addon 0.4: when the bank was last seen, empty if it never was.
+    // From addon 0.5: class, level and, when the game shows them, the challenges (1 Hardcore, 2 Ironman, 4 Bloodthirsty).
+    var lvl = parseInt(h[8], 10), cm = parseInt(h[9], 10);
     return { character: cleanName(h[1]), date: h[3] || '', race: raceKey(h[4]), gender: genderKey(h[5]), items: items, bad: bad,
-      bank: h.length > 6 ? h[6] : null };
+      bank: h.length > 6 ? h[6] : null, cls: classKey(h[7]), level: lvl >= 1 && lvl <= 80 ? lvl : 0, mask: cm >= 1 && cm <= 7 ? cm : 0, sent: sent };
   }
 
   /* ---------- data: Supabase when configured, in-page demo otherwise ---------- */
@@ -671,13 +710,14 @@ details.auto p { margin: 8px 0; }
     if (!LIVE) return demoVaults.filter(function (v) { return v.mask === mask || v.mask === 0; });
     var since = new Date(Date.now() - MAX_AGE_DAYS * 864e5).toISOString();
     var q = '&mask=eq.' + mask + '&updated_at=gte.' + encodeURIComponent(since) + '&order=updated_at.desc&limit=500';
-    var r = await fetch(API_URL + '/rest/v1/vaults?select=character,mask,note,items,updated_at,race,gender' + q, { headers: headers() });
-    // Database not migrated yet (no race columns): read the original columns.
+    var r = await fetch(API_URL + '/rest/v1/vaults?select=character,mask,note,items,updated_at,race,gender,class,level' + q, { headers: headers() });
+    // Database not migrated yet (no class or race columns): read the older columns.
+    if (!r.ok) r = await fetch(API_URL + '/rest/v1/vaults?select=character,mask,note,items,updated_at,race,gender' + q, { headers: headers() });
     if (!r.ok) r = await fetch(API_URL + '/rest/v1/vaults?select=character,mask,note,items,updated_at' + q, { headers: headers() });
     if (!r.ok) throw new Error('load_failed');
     return (await r.json()).map(function (v) {
       return { character: String(v.character || ''), mask: v.mask, note: String(v.note || ''), updated_at: v.updated_at,
-        race: raceKey(v.race), gender: genderKey(v.gender),
+        race: raceKey(v.race), gender: genderKey(v.gender), cls: classKey(v['class']), level: +v.level || 0,
         items: (Array.isArray(v.items) ? v.items : []).map(norm).filter(Boolean) };
     });
   }
@@ -766,14 +806,17 @@ details.auto p { margin: 8px 0; }
   async function apiUpload(p) {
     if (LIVE) {
       var body = { p_character: p.character, p_mask: p.mask, p_items: p.items, p_code: p.code || null, p_note: p.note };
-      try { return await rpc('upload_vault', Object.assign({ p_race: p.race || null, p_gender: p.gender || null }, body)); }
-      catch (e) { if (e.code !== 'PGRST202') throw e; }   // database not migrated yet: upload without the race
+      var withRace = Object.assign({ p_race: p.race || null, p_gender: p.gender || null }, body);
+      try { return await rpc('upload_vault', Object.assign({ p_class: p.cls || null, p_level: p.level || null }, withRace)); }
+      catch (e) { if (e.code !== 'PGRST202') throw e; }   // database not migrated yet: upload without class and level
+      try { return await rpc('upload_vault', withRace); }
+      catch (e) { if (e.code !== 'PGRST202') throw e; }   // older still: upload without the race
       return rpc('upload_vault', body);
     }
     var key = p.character.toLowerCase(), old = demoVaults.filter(function (v) { return v.character.toLowerCase() === key; })[0];
     if (old && old.code !== p.code) throw new Error('wrong_code');
     if (old) demoVaults.splice(demoVaults.indexOf(old), 1);
-    demoVaults.push({ character: p.character, mask: p.mask, note: p.note, race: p.race, gender: p.gender, updated_at: new Date().toISOString(), code: 'DEMO-0000-0000',
+    demoVaults.push({ character: p.character, mask: p.mask, note: p.note, race: p.race, gender: p.gender, cls: p.cls || '', level: p.level || 0, updated_at: new Date().toISOString(), code: 'DEMO-0000-0000',
       items: p.items.map(norm).filter(Boolean) });
     return { character: p.character, code: old ? null : 'DEMO-0000-0000', count: p.items.length };
   }
@@ -812,8 +855,8 @@ details.auto p { margin: 8px 0; }
     });
     var now = Date.now();
     demoVaults = [   // mask 0: shown for every challenge set in demo mode
-      { character: 'Frostmule', mask: 0, note: 'Demo donor', race: 'dwarf', gender: 'male', updated_at: new Date(now - 864e5).toISOString(), items: a, code: '' },
-      { character: 'Saronite', mask: 0, note: 'Demo donor', race: 'bloodelf', gender: 'female', updated_at: new Date(now - 4 * 864e5).toISOString(), items: b, code: '' }
+      { character: 'Frostmule', mask: 0, note: 'Demo donor', race: 'dwarf', gender: 'male', cls: 'hunter', level: 34, updated_at: new Date(now - 864e5).toISOString(), items: a, code: '' },
+      { character: 'Saronite', mask: 0, note: 'Demo donor', race: 'bloodelf', gender: 'female', cls: 'mage', level: 61, updated_at: new Date(now - 4 * 864e5).toISOString(), items: b, code: '' }
     ];
     var pick = function (list, i, qty) { var it = list[i % list.length]; return { id: it.id, qty: qty, q: it.q, name: it.name, icon: it.icon }; };
     demoLog = [
@@ -891,7 +934,7 @@ details.auto p { margin: 8px 0; }
     var seq = ++onlineSeq, list = await ccGet('/characters/online', 4);
     if (seq !== onlineSeq || !Array.isArray(list)) return;
     var map = {}; list.forEach(function (p) { if (p && p.name) map[String(p.name).toLowerCase()] = 1; });
-    state.online = map; renderCatalog(); renderOrder(); renderLog(); renderInbox();
+    state.online = map; renderDonors(); renderCatalog(); renderOrder(); renderLog(); renderInbox();
   }
   // Donors whose character died after their last upload cannot trade any more: their stock is hidden.
   async function loadFallen(mask) {
@@ -1002,16 +1045,31 @@ details.auto p { margin: 8px 0; }
       : f ? 'No item matches "' + state.filter + '"' + (only ? ' in ' + only + "'s list." : '.')
       : 'Nobody running ' + modeName(state.mask) + ' has shared an inventory yet. Be the first: press Share your inventory on the right.' }));
   }
-  // Donor filter: "All donors" plus one entry per donor of the current challenge set.
+  // Donor cards above the catalog: who shares for this challenge set, with race, class, level and freshness. Clicking one filters the catalog.
   function renderDonors() {
-    var sel = $('donorFilter'), names = {}, list = [], when = {};
-    state.items.forEach(function (a) { a.holders.forEach(function (h) { if (!names[h.who]) { names[h.who] = 0; list.push(h.who); } names[h.who]++; when[h.who] = h.when; }); });
+    var box = $('donors'), names = {}, list = [];
+    state.items.forEach(function (a) { a.holders.forEach(function (h) { if (!names[h.who]) { names[h.who] = 0; list.push(h.who); } names[h.who]++; }); });
     list.sort(function (x, y) { return x.localeCompare(y); });
     if (list.indexOf(state.donor) < 0) state.donor = '';
-    sel.textContent = '';
-    sel.appendChild(el('option', { value: '', text: 'All donors (' + list.length + ')' }));
-    list.forEach(function (w) { sel.appendChild(el('option', { value: w, text: w + ' (' + names[w] + (names[w] === 1 ? ' item' : ' items') + ' · updated ' + agoFine(when[w]) + ')' })); });
-    sel.value = state.donor; sel.hidden = list.length < 2;
+    box.textContent = ''; box.hidden = !list.length;
+    var pick = function (w) { return function () { state.donor = state.donor === w ? '' : w; renderDonors(); renderCatalog(); }; };
+    if (list.length > 1) box.appendChild(el('button', { class: 'donor all', type: 'button', 'aria-pressed': String(!state.donor), on: { click: pick('') } },
+      [el('b', { text: 'All donors' }), el('small', { text: list.length + ' characters' })]));
+    list.forEach(function (w) {
+      var v = vaultByName(w) || {};
+      var what = [v.level ? 'Level ' + v.level : '', raceLabel(v.race), CLASS_NAMES[v.cls] || ''].filter(Boolean).join(' ');
+      var card = el('button', { class: 'donor', type: 'button', 'aria-pressed': String(state.donor === w), on: { click: pick(w) } }, [
+        el('span', { class: 'faces' }, [raceNode(v.race, v.gender, w), classNode(v.cls)]),
+        el('span', { class: 'dtext' }, [
+          el('b', {}, [document.createTextNode(w), isOnline(w) ? dot() : null]),
+          what ? el('small', { text: what }) : null,
+          el('small', { text: names[w] + (names[w] === 1 ? ' item' : ' items') + ' · updated ' + agoFine(v.updated_at) }),
+          v.note ? el('small', { class: 'dnote', text: v.note }) : null
+        ])
+      ]);
+      if (list.length < 2) card.disabled = true;
+      box.appendChild(card);
+    });
   }
   function renderOrder() {
     var ul = $('lines'), keys = Object.keys(state.cart); ul.textContent = '';
@@ -1104,7 +1162,7 @@ details.auto p { margin: 8px 0; }
         el('span', { class: 'hint', text: 'Your request, still waiting.' })]) : null;
       ul.appendChild(el('li', { class: 'log-row' }, [
         el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender), el('span', { class: 'arrow', text: 'asked' }),
-          whoNode(r.donor, r.donorRace, r.donorGender), r.delivered ? el('span', { class: 'tag ok', text: 'Delivered' }) : null, t]),
+          whoNode(r.donor, r.donorRace, r.donorGender, (vaultByName(r.donor) || {}).cls), r.delivered ? el('span', { class: 'tag ok', text: 'Delivered' }) : null, t]),
         itemsNode(r), mine
       ]));
     });
@@ -1210,6 +1268,28 @@ details.auto p { margin: 8px 0; }
     btn.disabled = false;
   }
 
+  // Marks as delivered the waiting requests that match what the addon saw leaving the character: something the
+  // player asked for, mailed or traded to that player after the request was made. Done before the new export is
+  // uploaded, so the stock is taken off the old list and the fresh export then replaces it.
+  async function settleDeliveries(ex, code) {
+    if (!ex.sent || !ex.sent.length || !code || !state.delivery) return [];
+    var done = [];
+    try {
+      var rows = (await apiInbox([ex.character])) || [];
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        if (r.delivered) continue;
+        var asked = r.items.map(function (it) { return it.id; }), since = new Date(r.when).getTime() - 10 * 6e4;
+        var hit = ex.sent.some(function (s) {
+          return s.to.toLowerCase() === r.requester.toLowerCase() && s.t >= since && s.ids.some(function (id) { return asked.indexOf(id) >= 0; });
+        });
+        if (!hit) continue;
+        try { await apiMark(ex.character, code, r.id, true); done.push(r.requester); } catch (e) { if (e.message === 'wrong_code') break; }
+      }
+    } catch (e) {}
+    return done;
+  }
+
   /* ---------- sharing an inventory ---------- */
   function shareMsg(nodes) {
     var b = $('shareMsg'); b.textContent = ''; (nodes || []).forEach(function (n) { b.appendChild(n); });
@@ -1241,7 +1321,8 @@ details.auto p { margin: 8px 0; }
     share.skip = skipSet();
     $('shareChar').textContent = share.character;
     $('shareDate').textContent = share.date ? 'exported ' + share.date : '';
-    MODES.forEach(function (m) { $('s' + m[0]).checked = !!(state.mask & m[0]); });
+    var preset = share.mask || state.mask;
+    MODES.forEach(function (m) { $('s' + m[0]).checked = !!(preset & m[0]); });
     $('shareCode').value = lsGet('ironvault.code.' + share.character.toLowerCase()) || '';
     $('shareNote').value = lsGet('ironvault.note') || '';
     var known = state.vaults.filter(function (v) { return v.character === share.character; })[0] || {};
@@ -1265,9 +1346,12 @@ details.auto p { margin: 8px 0; }
     if (!items.length) return shareMsg([note('Nothing to upload: tick at least one item.')]);
     var btn = $('uploadBtn'); btn.disabled = true;
     try {
-      var res = await apiUpload({ character: share.character, mask: mask, items: items, code: code, note: noteText, race: sRace, gender: sGender });
+      var settled = await settleDeliveries(share, code);
+      var res = await apiUpload({ character: share.character, mask: mask, items: items, code: code, note: noteText, race: sRace, gender: sGender,
+        cls: share.cls, level: share.level });
       var out = [note('Uploaded ' + items.length + ' items for ' + share.character + ' (' + modeName(mask) + ').' +
-        (locked ? ' ' + locked + ' green or better gear pieces were left out because Ironman characters cannot equip them.' : ''), true)];
+        (locked ? ' ' + locked + ' green or better gear pieces were left out because Ironman characters cannot equip them.' : '') +
+        (settled.length ? ' Marked as delivered: ' + settled.join(', ') + '.' : ''), true)];
       if (res && res.code) {
         lsSet('ironvault.code.' + share.character.toLowerCase(), res.code); $('shareCode').value = res.code;
         out.push(el('div', { class: 'codebox' }, [document.createTextNode('Your vault code: '), el('b', { text: res.code }),
@@ -1382,11 +1466,14 @@ details.auto p { margin: 8px 0; }
         try {
           var v = await vaultOf(ex.character);
           if (!v) { fresh.push(ex); continue; }
-          var items = ex.items.filter(function (it) { return !skip[it.id + ':' + it.suffix] && !((v.mask & 2) && isLockedGear(it)); })
+          var mask = ex.mask || v.mask;
+          var items = ex.items.filter(function (it) { return !skip[it.id + ':' + it.suffix] && !((mask & 2) && isLockedGear(it)); })
             .map(function (it) { return [it.id, it.suffix, it.count, it.q, it.stack, it.equip, it.icon, it.type, it.sub, it.name]; });
           if (!items.length) { notes.push(ex.character + ': nothing to offer in the last export.'); continue; }
-          await apiUpload({ character: ex.character, mask: v.mask, items: items, code: code, note: String(v.note || ''),
-            race: ex.race || raceKey(v.race), gender: ex.gender || genderKey(v.gender) });
+          var settled = await settleDeliveries(ex, code);
+          if (settled.length) notes.push(ex.character + ' delivered to ' + settled.join(', ') + '.');
+          await apiUpload({ character: ex.character, mask: mask, items: items, code: code, note: String(v.note || ''),
+            race: ex.race || raceKey(v.race), gender: ex.gender || genderKey(v.gender), cls: ex.cls, level: ex.level });
           lsSet('ironvault.sync.' + key, sig); done.push(ex.character);
         } catch (e) { notes.push(ex.character + ': ' + (e.message === 'wrong_code' ? 'the vault code saved in this browser no longer matches.' : 'upload failed, will retry.')); if (e.message !== 'wrong_code') sync.stamp = -1; }
       }
@@ -1469,7 +1556,7 @@ details.auto p { margin: 8px 0; }
     if (!share || share.character !== who) return;
     ccCard(box, res, who);
     if (res.status !== 'found') return;
-    MODES.forEach(function (m) { $('s' + m[0]).checked = !!(res.c.mask & m[0]); });
+    if (!share.mask) MODES.forEach(function (m) { $('s' + m[0]).checked = !!(res.c.mask & m[0]); });
     if (res.c.race) { $('shareRace').value = res.c.race; $('shareGender').value = res.c.gender; }
   }
 
@@ -1480,7 +1567,6 @@ details.auto p { margin: 8px 0; }
     });
   });
   $('search').addEventListener('input', function (e) { state.filter = e.target.value.trim(); renderCatalog(); });
-  $('donorFilter').addEventListener('change', function (e) { state.donor = e.target.value; renderCatalog(); });
   $('confirm').addEventListener('click', prepare);
   var shareDlg = $('share');
   function openShare(e) { if (e) e.preventDefault(); if (shareDlg.open) return; if (shareDlg.showModal) shareDlg.showModal(); else shareDlg.setAttribute('open', ''); }
@@ -1499,7 +1585,7 @@ details.auto p { margin: 8px 0; }
   $('recipient').addEventListener('change', lookupMe);
   $('recipient').addEventListener('input', function () { meSeq++; clearTimeout(meTimer); $('meCard').hidden = true; });
   setInterval(function () { if (!document.hidden) loadOnline(); }, 5 * 6e4);
-  setInterval(function () { if (!document.hidden) renderFresh(); }, 6e4);
+  setInterval(function () { if (!document.hidden && !state.loading) { renderFresh(); renderDonors(); } }, 6e4);
   // A donor who leaves the tab open sees new requests arrive (count in the tab title).
   setInterval(function () { if (!document.hidden && myChars().length) loadInbox(); }, 2 * 6e4);
   document.addEventListener('visibilitychange', function () { if (!document.hidden && myChars().length) loadInbox(); });

@@ -1,14 +1,20 @@
--- IronVault 0.4 (WoW 3.3.5a)
+-- IronVault 0.5 (WoW 3.3.5a)
 -- Read-only: it scans bags and bank and keeps the result as text, shown by /ivault and saved with the
 -- addon's settings. It never moves items, sends mail or presses anything for you.
 --
 -- Export format, one record per line, fields separated by "^":
---   IRONVAULT1^character^copper^date^race^sex^bankSeen
---     (race as the client names it, e.g. NightElf; sex male/female; bankSeen empty until the bank was opened once)
+--   IRONVAULT1^character^copper^date^race^sex^bankSeen^class^level^challenges
+--     (race and class as the client names them, e.g. NightElf, DEATHKNIGHT; sex male/female;
+--      bankSeen empty until the bank was opened once; challenges 1 = Hardcore + 2 = Ironman + 4 = Bloodthirsty,
+--      empty when the addon cannot tell)
 --   itemId^suffixId^count^quality^stackSize^equipSlot^icon^type^subtype^name
+--   SENT^recipient^time^mail|trade^itemId:suffixId:count,itemId:suffixId:count,...
+--     (what this character mailed or traded away lately; the site uses it to mark requests as delivered)
 --
 -- Saved settings (WTF/Account/<account>/SavedVariables/IronVault.lua), written by the game at logout or /reload:
---   IronVaultDB.chars[character] = { export = <text above>, bank = <items seen in the bank>, bankSeen = <date> }
+--   IronVaultDB.chars[character] = { export = <text above>, bank = <items seen in the bank>, bankSeen = <date>,
+--                                    bankTime = <same, as a number>, sent = <list of things sent> }
+--   IronVaultDB.quiet = true turns the login reminder off (/ivault quiet)
 -- The Iron Vault site can read that file to refresh a list without copying anything.
 
 IronVaultDB = IronVaultDB or {}
@@ -96,7 +102,65 @@ local function scanBank()
   if c then
     c.bank = bank
     c.bankSeen = date("%Y-%m-%d %H:%M")
+    c.bankTime = time()
   end
+end
+
+-- Challenge modes, when the server shows them as auras on the character. Returns nil when none is visible,
+-- so the site keeps whatever the player ticked there.
+local CHALLENGE_WORDS = { { "hardcore", 1 }, { "iron ?man", 2 }, { "bloodthirsty", 4 } }
+local function auraNames()
+  local names = {}
+  for _, filter in ipairs({ "HELPFUL", "HARMFUL" }) do
+    for i = 1, 40 do
+      local name, _, _, _, _, _, _, _, _, _, spellId = UnitAura("player", i, filter)
+      if not name then
+        break
+      end
+      names[#names + 1] = { name = name, id = spellId }
+    end
+  end
+  return names
+end
+local function challenges()
+  local mask = 0
+  for _, aura in ipairs(auraNames()) do
+    local low = string.lower(aura.name)
+    for _, w in ipairs(CHALLENGE_WORDS) do
+      if low:find(w[1]) and mask % (w[2] * 2) < w[2] then
+        mask = mask + w[2]
+      end
+    end
+  end
+  if mask > 0 then
+    return mask
+  end
+  return nil
+end
+
+-- What this character sent: kept for two weeks, at most 60 entries.
+local SENT_KEEP, SENT_DAYS = 60, 14
+local function remember(to, via, items)
+  local c = mine()
+  if not c or not to or to == "" or #items == 0 then
+    return
+  end
+  c.sent = c.sent or {}
+  table.insert(c.sent, { to = to, t = time(), via = via, items = table.concat(items, ",") })
+  local limit = time() - SENT_DAYS * 86400
+  while #c.sent > SENT_KEEP or (c.sent[1] and (c.sent[1].t or 0) < limit) do
+    table.remove(c.sent, 1)
+  end
+end
+local function itemKey(link, count)
+  if not link then
+    return nil
+  end
+  local id, suffix = link:match("item:(%d+):%-?%d*:%-?%d*:%-?%d*:%-?%d*:%-?%d*:(%-?%d*)")
+  if not id then
+    return nil
+  end
+  return id .. ":" .. (tonumber(suffix) or 0) .. ":" .. (count or 1)
 end
 
 local function clean(s)
@@ -142,12 +206,23 @@ local function buildExport()
 
   local _, raceFile = UnitRace("player")
   local sex = UnitSex("player")   -- 2 = male, 3 = female
+  local _, classFile = UnitClass("player")
   local header = table.concat({
     "IRONVAULT1", UnitName("player"), GetMoney(), date("%Y-%m-%d %H:%M"),
     clean(raceFile), sex == 3 and "female" or sex == 2 and "male" or "",
-    bank and clean(c.bankSeen or "?") or ""
+    bank and clean(c.bankSeen or "?") or "",
+    clean(classFile), UnitLevel("player") or "", challenges() or ""
   }, "^")
-  return header .. "\n" .. table.concat(lines, "\n"), n, bank ~= nil
+  local out = header
+  if n > 0 then
+    out = out .. "\n" .. table.concat(lines, "\n")
+  end
+  if c and c.sent then
+    for _, s in ipairs(c.sent) do
+      out = out .. "\n" .. table.concat({ "SENT", clean(s.to), s.t or 0, s.via or "", s.items or "" }, "^")
+    end
+  end
+  return out, n, bank ~= nil
 end
 
 local function showExport(text)
@@ -229,18 +304,104 @@ local function migrate()
   IronVaultDB.lastExport = nil
 end
 
+-- Mail: what is attached is read when Send is pressed, and kept once the game confirms it was sent.
+local mailDraft = nil
+hooksecurefunc("SendMail", function(recipient)
+  mailDraft = nil
+  if not GetSendMailItemLink then
+    return
+  end
+  local ok = pcall(function()
+    local items = {}
+    for i = 1, (ATTACHMENTS_MAX_SEND or 12) do
+      local _, _, count = GetSendMailItem(i)
+      local key = itemKey(GetSendMailItemLink(i), count)
+      if key then
+        items[#items + 1] = key
+      end
+    end
+    mailDraft = { to = recipient, items = items }
+  end)
+  if not ok then
+    mailDraft = nil
+  end
+end)
+
+-- Trade: what this character gives is read when both sides have accepted, and kept once the trade completes.
+local tradeDraft = nil
+local function readTrade()
+  tradeDraft = nil
+  if not GetTradePlayerItemLink then
+    return
+  end
+  local items = {}
+  for i = 1, 6 do     -- the seventh slot is "will not be traded"
+    local _, _, count = GetTradePlayerItemInfo(i)
+    local key = itemKey(GetTradePlayerItemLink(i), count)
+    if key then
+      items[#items + 1] = key
+    end
+  end
+  tradeDraft = { to = UnitName("NPC"), items = items }
+end
+
+-- One line at login, only when there is something to do.
+local function reminder()
+  if IronVaultDB.quiet then
+    return
+  end
+  local c = mine()
+  if not c then
+    return
+  end
+  if not c.bank then
+    say("open your bank once so the Iron Vault list includes it. (/ivault quiet hides these reminders)")
+  elseif c.bankTime and time() - c.bankTime > 3 * 86400 then
+    say("bank last seen " .. math.floor((time() - c.bankTime) / 86400) .. " days ago: open it to refresh your Iron Vault list.")
+  end
+end
+
+local remindIn = nil
 local events = CreateFrame("Frame")
+events:RegisterEvent("MAIL_SEND_SUCCESS")
+events:RegisterEvent("MAIL_FAILED")
+events:RegisterEvent("TRADE_ACCEPT_UPDATE")
+events:RegisterEvent("TRADE_REQUEST_CANCEL")
+events:RegisterEvent("UI_INFO_MESSAGE")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_LOGOUT")
 events:RegisterEvent("BANKFRAME_OPENED")
 events:RegisterEvent("BANKFRAME_CLOSED")
 events:RegisterEvent("PLAYERBANKSLOTS_CHANGED")
 events:RegisterEvent("BAG_UPDATE")
-events:SetScript("OnEvent", function(self, event)
-  if event == "PLAYER_ENTERING_WORLD" then
+events:SetScript("OnEvent", function(self, event, a1, a2)
+  if event == "MAIL_SEND_SUCCESS" then
+    if mailDraft then
+      remember(mailDraft.to, "mail", mailDraft.items)
+      mailDraft = nil
+      pending = 2
+    end
+  elseif event == "MAIL_FAILED" then
+    mailDraft = nil
+  elseif event == "TRADE_ACCEPT_UPDATE" then
+    if a1 == 1 and a2 == 1 then
+      readTrade()
+    end
+  elseif event == "TRADE_REQUEST_CANCEL" then
+    tradeDraft = nil
+  elseif event == "UI_INFO_MESSAGE" then
+    if tradeDraft and a1 == ERR_TRADE_COMPLETE then
+      remember(tradeDraft.to, "trade", tradeDraft.items)
+      tradeDraft = nil
+      pending = 2
+    elseif a1 == ERR_TRADE_CANCELLED then
+      tradeDraft = nil
+    end
+  elseif event == "PLAYER_ENTERING_WORLD" then
     if not ready then
       ready = true
       migrate()
+      remindIn = 8
     end
     pending = 5
   elseif event == "PLAYER_LOGOUT" then
@@ -262,6 +423,13 @@ events:SetScript("OnEvent", function(self, event)
   end
 end)
 events:SetScript("OnUpdate", function(self, elapsed)
+  if remindIn then
+    remindIn = remindIn - elapsed
+    if remindIn <= 0 then
+      remindIn = nil
+      reminder()
+    end
+  end
   if not pending then
     return
   end
@@ -277,10 +445,25 @@ SLASH_IRONVAULT2 = "/ironvault"
 SlashCmdList["IRONVAULT"] = function(msg)
   msg = string.lower(msg or "")
   local c = mine()
+  if msg == "quiet" then
+    IronVaultDB.quiet = not IronVaultDB.quiet
+    say(IronVaultDB.quiet and "login reminders off." or "login reminders on.")
+    return
+  end
+  if msg == "auras" then
+    -- Helps to find out how the server marks challenge characters.
+    local list = auraNames()
+    say(#list .. " auras on this character; challenges read from them: " .. tostring(challenges() or "none"))
+    for _, aura in ipairs(list) do
+      say("  " .. aura.name .. " (" .. tostring(aura.id) .. ")")
+    end
+    return
+  end
   if msg == "forgetbank" then
     if c then
       c.bank = nil
       c.bankSeen = nil
+      c.bankTime = nil
     end
     pending = 1
     say("stored bank contents cleared.")
