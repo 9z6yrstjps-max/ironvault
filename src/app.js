@@ -4,7 +4,7 @@
   var API_URL = String(CFG.supabaseUrl || '').replace(/\/+$/, ''), API_KEY = String(CFG.supabaseAnonKey || '');
   var LIVE = !!(API_URL && API_KEY);
   var MAX_AGE_DAYS = CFG.maxAgeDays || 30;
-  var MAX_LINES = 8, MAX_QTY = 60, CHAT_LIMIT = 255;
+  var MAX_LINES = 8, MAX_QTY = 60, CHAT_LIMIT = 255, INBOX_DAYS = 30;
   var MODES = [[1, 'Hardcore'], [2, 'Ironman'], [4, 'Bloodthirsty']];
   var NO_GEAR_SLOTS = { '': 1, INVTYPE_BAG: 1, INVTYPE_AMMO: 1, INVTYPE_QUIVER: 1 };
   var ICON_CDN = 'https://wow.zamimg.com/images/wow/icons/large/';
@@ -21,7 +21,7 @@
   /*ICONS_DATA*/
   /*DEMO_DATA*/
 
-  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [] };
+  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [], inbox: null, inboxOpen: false, delivery: false };
   var share = null;            // parsed export waiting to be uploaded
   var demoVaults = [], demoLog = [];   // demo mode only
   var $ = function (id) { return document.getElementById(id); };
@@ -167,7 +167,7 @@
     return j;
   }
   function logRow(v) {
-    return { when: v.created_at, requester: String(v.requester || ''), race: raceKey(v.race), gender: genderKey(v.gender),
+    return { id: v.id, delivered: v.delivered_at || '', when: v.created_at, requester: String(v.requester || ''), race: raceKey(v.race), gender: genderKey(v.gender),
       donor: String(v.donor || ''), donorRace: raceKey(v.donor_race), donorGender: genderKey(v.donor_gender),
       items: (Array.isArray(v.items) ? v.items : []).filter(Array.isArray).map(function (a) {
         var icon = String(a[4] || '').toLowerCase(), q = parseInt(a[2], 10);
@@ -178,17 +178,42 @@
   // Returns null when the log is not available (database not migrated yet, or unreachable).
   async function apiLogList(mask) {
     if (!LIVE) return demoLog.filter(function (r) { return r.mask === mask || r.mask === 0; });
+    var cols = 'created_at,requester,race,gender,donor,donor_race,donor_gender,items', q = '&mask=eq.' + mask + '&order=created_at.desc&limit=30';
     try {
-      var r = await fetch(API_URL + '/rest/v1/requests?select=created_at,requester,race,gender,donor,donor_race,donor_gender,items&mask=eq.' + mask +
-        '&order=created_at.desc&limit=30', { headers: headers() });
+      var r = await fetch(API_URL + '/rest/v1/requests?select=id,delivered_at,' + cols + q, { headers: headers() });
+      state.delivery = r.ok;
+      // Database not migrated yet (no delivered_at column): read the original columns.
+      if (!r.ok) r = await fetch(API_URL + '/rest/v1/requests?select=' + cols + q, { headers: headers() });
       if (!r.ok) return null;
       return (await r.json()).map(logRow);
     } catch (e) { return null; }
   }
+  // Requests addressed to the given donors, newest first. Null when not available.
+  async function apiInbox(names) {
+    if (!names.length) return [];
+    if (!LIVE) return demoLog.filter(function (r) { return names.indexOf(r.donor) >= 0; });
+    var since = new Date(Date.now() - INBOX_DAYS * 864e5).toISOString();
+    try {
+      var r = await fetch(API_URL + '/rest/v1/requests?select=id,delivered_at,created_at,requester,race,gender,donor,donor_race,donor_gender,items' +
+        '&donor=in.(' + names.map(encodeURIComponent).join(',') + ')&created_at=gte.' + encodeURIComponent(since) +
+        '&order=created_at.desc&limit=100', { headers: headers() });
+      if (!r.ok) return null;
+      return (await r.json()).map(logRow);
+    } catch (e) { return null; }
+  }
+  // Marks a request as delivered or waiting again; with no id it only checks the donor's vault code.
+  async function apiMark(donor, code, id, delivered) {
+    if (LIVE) return rpc('mark_request', { p_donor: donor, p_code: code, p_id: id, p_delivered: delivered !== false });
+    var v = demoVaults.filter(function (x) { return x.character === donor; })[0];
+    if (!v) throw new Error('not_found');
+    if (v.code && v.code !== code) throw new Error('wrong_code');
+    demoLog.forEach(function (r) { if (id !== null && r.id === id) r.delivered = delivered !== false ? new Date().toISOString() : ''; });
+    return { ok: true };
+  }
   async function apiLog(p) {
     if (LIVE) return rpc('log_request', { p_requester: p.requester, p_donor: p.donor, p_items: p.items, p_race: p.race || null, p_gender: p.gender || null });
     var d = demoVaults.filter(function (v) { return v.character === p.donor; })[0] || {};
-    demoLog.unshift({ mask: 0, when: new Date().toISOString(), requester: p.requester, race: p.race, gender: p.gender, donor: p.donor,
+    demoLog.unshift({ id: Date.now(), delivered: '', mask: 0, when: new Date().toISOString(), requester: p.requester, race: p.race, gender: p.gender, donor: p.donor,
       donorRace: d.race || '', donorGender: d.gender || '', items: p.shown });
   }
   async function apiUpload(p) {
@@ -220,6 +245,7 @@
     invalid_items: 'The item list is too large or damaged. Export again with /ivault and retry.',
     too_many_new_vaults: 'Too many new lists were created in the last hour. Try again later.',
     not_found: 'There is no list for this character.',
+    request_not_found: 'That request is no longer in the log.',
     network: 'The vault could not be reached. Check your connection and try again.'
   };
   function errText(e) { return ERRORS[e && e.message] || 'Something went wrong (' + ((e && e.message) || 'unknown') + '). Try again.'; }
@@ -243,8 +269,8 @@
     ];
     var pick = function (list, i, qty) { var it = list[i % list.length]; return { id: it.id, qty: qty, q: it.q, name: it.name, icon: it.icon }; };
     demoLog = [
-      { mask: 0, when: new Date(now - 25 * 6e4).toISOString(), requester: 'Tundrawolf', race: 'tauren', gender: 'male', donor: 'Frostmule', donorRace: 'dwarf', donorGender: 'male', items: [pick(a, 0, 5), pick(a, 9, 2)] },
-      { mask: 0, when: new Date(now - 7 * 36e5).toISOString(), requester: 'Elunara', race: 'nightelf', gender: 'female', donor: 'Saronite', donorRace: 'bloodelf', donorGender: 'female', items: [pick(b, 2, 10)] }
+      { id: 2, delivered: '', mask: 0, when: new Date(now - 25 * 6e4).toISOString(), requester: 'Tundrawolf', race: 'tauren', gender: 'male', donor: 'Frostmule', donorRace: 'dwarf', donorGender: 'male', items: [pick(a, 0, 5), pick(a, 9, 2)] },
+      { id: 1, delivered: new Date(now - 5 * 36e5).toISOString(), mask: 0, when: new Date(now - 7 * 36e5).toISOString(), requester: 'Elunara', race: 'nightelf', gender: 'female', donor: 'Saronite', donorRace: 'bloodelf', donorGender: 'female', items: [pick(b, 2, 10)] }
     ];
   }
 
@@ -317,7 +343,7 @@
     var seq = ++onlineSeq, list = await ccGet('/characters/online', 4);
     if (seq !== onlineSeq || !Array.isArray(list)) return;
     var map = {}; list.forEach(function (p) { if (p && p.name) map[String(p.name).toLowerCase()] = 1; });
-    state.online = map; renderCatalog(); renderOrder(); renderLog();
+    state.online = map; renderCatalog(); renderOrder(); renderLog(); renderInbox();
   }
   // Donors whose character died after their last upload cannot trade any more: their stock is hidden.
   async function loadFallen(mask) {
@@ -504,7 +530,7 @@
     // Public log, best effort: a failure here never blocks the request itself.
     Promise.all(order.map(function (who) {
       return Promise.resolve(apiLog({ requester: name, donor: who, items: sent[who].ids, shown: sent[who].shown, race: race, gender: gender })).catch(function () {});
-    })).then(loadLog);
+    })).then(function () { loadLog(); loadInbox(); });
   }
 
   /* ---------- request log ---------- */
@@ -517,18 +543,91 @@
       var t = el('time', { datetime: r.when, text: agoFine(r.when) });
       ul.appendChild(el('li', { class: 'log-row' }, [
         el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender), el('span', { class: 'arrow', text: 'asked' }),
-          whoNode(r.donor, r.donorRace, r.donorGender), t]),
-        el('div', { class: 'log-items' }, r.items.map(function (it) {
-          return el('span', {}, [el('span', { class: 'mini' }, [iconNode(it, 'g-spark')]), el('span', { class: 'q' + it.q, text: it.qty + '× ' + it.name })]);
-        }))
+          whoNode(r.donor, r.donorRace, r.donorGender), r.delivered ? el('span', { class: 'tag ok', text: 'delivered' }) : null, t]),
+        itemsNode(r)
       ]));
     });
+  }
+  function itemsNode(r) {
+    return el('div', { class: 'log-items' }, r.items.map(function (it) {
+      return el('span', {}, [el('span', { class: 'mini' }, [iconNode(it, 'g-spark')]), el('span', { class: 'q' + it.q, text: it.qty + '× ' + it.name })]);
+    }));
   }
   var logSeq = 0;
   async function loadLog() {
     var seq = ++logSeq, rows = state.mask ? await apiLogList(state.mask) : [];
     if (seq !== logSeq) return;
-    state.log = rows; renderLog();
+    state.log = rows; renderLog(); renderInbox();
+  }
+
+  /* ---------- donor inbox: requests waiting for the characters this browser holds a vault code for ---------- */
+  function myChars() {
+    var out = [], pre = 'ironvault.code.';
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(pre) === 0 && validName(k.slice(pre.length))) out.push({ name: cleanName(k.slice(pre.length)), code: localStorage.getItem(k) || '' });
+      }
+    } catch (e) {}
+    return out.sort(function (a, b) { return a.name.localeCompare(b.name); });
+  }
+  function inboxMsg(text, ok) { var b = $('inboxMsg'); b.textContent = ''; if (text) b.appendChild(note(text, ok)); }
+  function renderInbox() {
+    var sec = $('inbox'), mine = myChars(), rows = state.inbox || [];
+    var waiting = rows.filter(function (r) { return !r.delivered; }), done = rows.filter(function (r) { return r.delivered; });
+    $('inboxLink').hidden = !state.delivery;
+    $('inboxLink').textContent = 'Requests for you' + (waiting.length ? ' (' + waiting.length + ')' : '');
+    document.title = (waiting.length ? '(' + waiting.length + ') ' : '') + 'Iron Vault';
+    sec.hidden = !state.delivery || state.inbox === null || !(mine.length || state.inboxOpen);
+    if (sec.hidden) return;
+    $('inboxCount').textContent = waiting.length ? String(waiting.length) : ''; $('inboxCount').hidden = !waiting.length;
+    $('inboxHint').textContent = !mine.length ? 'For donors: enter the character you shared and its vault code to see who asked you for items.'
+      : waiting.length ? 'Trade or mail the items in game, then mark the request as delivered.'
+      : 'Nothing waiting for ' + mine.map(function (c) { return c.name; }).join(', ') + '.';
+    var row = function (r) {
+      var btn = el('button', { class: 'btn xs' + (r.delivered ? ' ghost' : ''), type: 'button', text: r.delivered ? 'Undo' : 'Mark delivered',
+        on: { click: function () { markRequest(r, !r.delivered, btn); } } });
+      return el('li', { class: 'log-row' }, [
+        el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender),
+          mine.length > 1 ? el('span', { class: 'arrow', text: 'asked ' + r.donor }) : null,
+          el('time', { datetime: r.when, text: agoFine(r.when) })]),
+        itemsNode(r),
+        el('div', { class: 'row' }, [btn, r.delivered ? el('span', { class: 'hint', text: 'delivered ' + agoFine(r.delivered) }) : null])
+      ]);
+    };
+    var ul = $('inboxList'), dl = $('inboxDoneList'); ul.textContent = ''; dl.textContent = '';
+    waiting.forEach(function (r) { ul.appendChild(row(r)); });
+    done.forEach(function (r) { dl.appendChild(row(r)); });
+    ul.hidden = !waiting.length;
+    $('inboxDone').hidden = !done.length; $('inboxDoneSum').textContent = 'Delivered (' + done.length + ')';
+    if (!mine.length) $('inboxSign').open = true;
+  }
+  async function markRequest(r, delivered, btn) {
+    var me = myChars().filter(function (c) { return c.name === r.donor; })[0];
+    if (!me) return;
+    btn.disabled = true; inboxMsg('');
+    try { await apiMark(r.donor, me.code, r.id, delivered); }
+    catch (e) { inboxMsg(e.message === 'wrong_code' ? 'The vault code saved in this browser for ' + r.donor + ' no longer matches. Enter it again below.' : errText(e)); btn.disabled = false; return; }
+    await loadInbox(); loadLog();
+  }
+  var inboxSeq = 0;
+  async function loadInbox() {
+    var seq = ++inboxSeq, rows = await apiInbox(myChars().map(function (c) { return c.name; }));
+    if (seq !== inboxSeq) return;
+    state.inbox = rows; renderInbox();
+  }
+  async function signIn() {
+    var name = $('inName').value.trim(), code = $('inCode').value.trim().toUpperCase(), btn = $('inBtn');
+    if (!validName(name)) return inboxMsg(ERRORS.invalid_character);
+    if (!code) return inboxMsg('Enter the vault code you received when you first uploaded the list.');
+    name = cleanName(name); btn.disabled = true; inboxMsg('');
+    try {
+      await apiMark(name, code, null, true);
+      lsSet('ironvault.code.' + name.toLowerCase(), code);
+      $('inName').value = ''; $('inCode').value = ''; $('inboxSign').open = false;
+      await loadInbox();
+    } catch (e) { inboxMsg(errText(e)); }
+    btn.disabled = false;
   }
 
   /* ---------- sharing an inventory ---------- */
@@ -629,7 +728,7 @@
       state.error = 'The vault could not be loaded. Check your connection and reload the page.';
     }
     state.loading = false; aggregate(); renderDonors(); renderCatalog(); renderOrder();
-    loadLog(); loadOnline();
+    loadLog(); loadOnline(); loadInbox();
   }
 
   /* ---------- recognising characters by name ---------- */
@@ -688,6 +787,14 @@
   $('recipient').addEventListener('change', lookupMe);
   $('recipient').addEventListener('input', function () { meSeq++; clearTimeout(meTimer); $('meCard').hidden = true; });
   setInterval(function () { if (!document.hidden) loadOnline(); }, 5 * 6e4);
+  // A donor who leaves the tab open sees new requests arrive (count in the tab title).
+  setInterval(function () { if (!document.hidden && myChars().length) loadInbox(); }, 2 * 6e4);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && myChars().length) loadInbox(); });
+  $('inboxLink').addEventListener('click', function (e) {
+    e.preventDefault(); state.inboxOpen = true; renderInbox();
+    if (!$('inbox').hidden) $('inbox').scrollIntoView({ block: 'start' });
+  });
+  $('inBtn').addEventListener('click', signIn);
   $('closeBtn').addEventListener('click', function () { $('done').close(); });
   $('readBtn').addEventListener('click', readExport);
   $('uploadBtn').addEventListener('click', upload);
@@ -703,6 +810,6 @@
   $('recipient').value = lsGet('ironvault.me') || '';
   fillRaces($('myRace'), true); fillRaces($('shareRace'), true);
   $('myRace').value = raceKey(lsGet('ironvault.race')); $('myGender').value = genderKey(lsGet('ironvault.gender')) || 'male';
-  if (!LIVE) { buildDemo(); $('modePill').hidden = false; }
+  if (!LIVE) { buildDemo(); $('modePill').hidden = false; state.delivery = true; }
   load(); lookupMe();
 })();

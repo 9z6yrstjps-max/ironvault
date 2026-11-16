@@ -3,7 +3,7 @@
     <div>
       <h1>Iron Vault</h1>
       <p class="sub">Community stock for <b>ChromieCraft challenge</b> characters</p>
-      <nav class="nav"><a href="./">About &amp; addon install</a><a href="#log">Recent requests</a><a href="#share">Share your inventory</a></nav>
+      <nav class="nav"><a href="./">About &amp; addon install</a><a href="#log">Recent requests</a><a href="#inbox" id="inboxLink" hidden>Requests for you</a><a href="#share">Share your inventory</a></nav>
     </div>
     <div class="stats">
       <span class="pill" id="modePill" hidden>Demo data: database not connected</span>
@@ -33,7 +33,7 @@
               <li>Tick the challenges your character runs. You only see donors with the exact same set, because only they can trade with you.</li>
               <li>Press + (or right click a row) to add an item to your request.</li>
               <li>Enter your character name and press Prepare requests.</li>
-              <li>Whisper each donor the message you get. If they are offline, send it by in-game mail.</li>
+              <li>Whisper each donor the message you get. If they are offline, send it by in-game mail. Either way, the donor finds your request waiting on this site.</li>
             </ol>
           </div>
           <div>
@@ -42,6 +42,7 @@
               <li>Install the <a href="IronVault.zip">IronVault addon</a> (unzip it into <code>Interface/AddOns</code>) and type <code>/ivault</code> on the character that holds your spare items.</li>
               <li>Copy the text, paste it under Share your inventory and untick anything you want to keep.</li>
               <li>Upload. Keep the code you receive: it is the only way to update or remove your list.</li>
+              <li>Check Requests for you on this page to see who asked for what, and mark each request as delivered once the items are on their way.</li>
             </ol>
           </div>
           <div>
@@ -62,6 +63,24 @@
 
     <div class="side">
     <button class="btn ghost wide" id="shareOpen" type="button">Share your inventory</button>
+    <section class="frame log inbox" id="inbox" aria-labelledby="inboxTitle" hidden>
+      <h2 id="inboxTitle">Requests for you <span class="badge" id="inboxCount" hidden></span></h2>
+      <p class="hint" id="inboxHint"></p>
+      <ul class="log-list" id="inboxList"></ul>
+      <details id="inboxDone" hidden>
+        <summary id="inboxDoneSum">Delivered</summary>
+        <ul class="log-list" id="inboxDoneList"></ul>
+      </details>
+      <details id="inboxSign">
+        <summary>Add a character</summary>
+        <div class="pair">
+          <input class="field full" id="inName" type="text" maxlength="12" autocomplete="off" placeholder="Character" aria-label="Donor character name">
+          <input class="field full" id="inCode" type="text" maxlength="20" autocomplete="off" placeholder="Vault code" aria-label="Vault code">
+        </div>
+        <button class="btn xs" id="inBtn" type="button">Show its requests</button>
+      </details>
+      <div id="inboxMsg" aria-live="polite"></div>
+    </section>
     <aside class="order frame" aria-labelledby="orderTitle">
       <h2 id="orderTitle">Your request</h2>
       <ul class="lines" id="lines"></ul>
@@ -83,7 +102,7 @@
     </aside>
     <section class="frame log" id="log" aria-labelledby="logTitle" hidden>
       <h2 id="logTitle">Recent requests</h2>
-      <p class="hint">What players asked for on this site. Trades happen in game, so this is not proof that items changed hands.</p>
+      <p class="hint">What players asked for on this site. Trades happen in game: "delivered" is the donor's own confirmation.</p>
       <ul class="log-list" id="logList"></ul>
     </section>
     </div>
@@ -144,7 +163,7 @@
 
 <dialog id="done" aria-labelledby="doneTitle">
   <h2 id="doneTitle">Requests ready</h2>
-  <p>Paste each message in the game chat. If a donor is offline, send them the same list by in-game mail.</p>
+  <p>Paste each message in the game chat. If a donor is offline, send them the same list by in-game mail. Each donor also finds your request waiting on this site.</p>
   <div id="requests"></div>
   <div class="row"><button class="btn ghost" id="closeBtn" type="button">Close</button></div>
 </dialog>

@@ -254,6 +254,24 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
 .tools .search { flex: 1 1 240px; margin: 0; }
 .tools select { flex: 0 1 240px; min-width: 170px; }
 .tools select[hidden] { display: none; }
+
+/* Donor inbox: requests waiting for the visitor's own characters, above the request box. */
+.side section.inbox { flex: none; display: block; min-height: 0; max-height: 46vh; overflow: auto; border-color: var(--gold); }
+.side section.inbox .log-list { overflow: visible; }
+.inbox .log-list[hidden] { display: none; }
+.inbox details { margin-top: 8px; }
+.inbox details[hidden] { display: none; }
+.inbox summary { cursor: pointer; color: var(--frost); font-size: .9rem; }
+.inbox details .pair { margin: 8px 0; }
+.inbox .log-row .row { margin: 0; gap: 8px; align-items: center; }
+.inbox #inboxMsg { margin-top: 8px; }
+.btn.xs { padding: 4px 12px; font-size: .88rem; flex: none; }
+.badge { display: inline-block; min-width: 1.5em; padding: 0 6px; border-radius: 999px; background: var(--gold); color: #1a1200;
+  font: 700 .8rem/1.5 var(--body); text-align: center; vertical-align: 2px; }
+.badge[hidden] { display: none; }
+.tag { border: 1px solid var(--steel); border-radius: 999px; padding: 0 8px; font-size: .75rem; color: var(--mist); }
+.tag.ok { border-color: var(--ok); color: var(--ok); }
+.side section.inbox[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -276,7 +294,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     <div>
       <h1>Iron Vault</h1>
       <p class="sub">Community stock for <b>ChromieCraft challenge</b> characters</p>
-      <nav class="nav"><a href="./">About &amp; addon install</a><a href="#log">Recent requests</a><a href="#share">Share your inventory</a></nav>
+      <nav class="nav"><a href="./">About &amp; addon install</a><a href="#log">Recent requests</a><a href="#inbox" id="inboxLink" hidden>Requests for you</a><a href="#share">Share your inventory</a></nav>
     </div>
     <div class="stats">
       <span class="pill" id="modePill" hidden>Demo data: database not connected</span>
@@ -306,7 +324,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
               <li>Tick the challenges your character runs. You only see donors with the exact same set, because only they can trade with you.</li>
               <li>Press + (or right click a row) to add an item to your request.</li>
               <li>Enter your character name and press Prepare requests.</li>
-              <li>Whisper each donor the message you get. If they are offline, send it by in-game mail.</li>
+              <li>Whisper each donor the message you get. If they are offline, send it by in-game mail. Either way, the donor finds your request waiting on this site.</li>
             </ol>
           </div>
           <div>
@@ -315,6 +333,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
               <li>Install the <a href="IronVault.zip">IronVault addon</a> (unzip it into <code>Interface/AddOns</code>) and type <code>/ivault</code> on the character that holds your spare items.</li>
               <li>Copy the text, paste it under Share your inventory and untick anything you want to keep.</li>
               <li>Upload. Keep the code you receive: it is the only way to update or remove your list.</li>
+              <li>Check Requests for you on this page to see who asked for what, and mark each request as delivered once the items are on their way.</li>
             </ol>
           </div>
           <div>
@@ -335,6 +354,24 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
 
     <div class="side">
     <button class="btn ghost wide" id="shareOpen" type="button">Share your inventory</button>
+    <section class="frame log inbox" id="inbox" aria-labelledby="inboxTitle" hidden>
+      <h2 id="inboxTitle">Requests for you <span class="badge" id="inboxCount" hidden></span></h2>
+      <p class="hint" id="inboxHint"></p>
+      <ul class="log-list" id="inboxList"></ul>
+      <details id="inboxDone" hidden>
+        <summary id="inboxDoneSum">Delivered</summary>
+        <ul class="log-list" id="inboxDoneList"></ul>
+      </details>
+      <details id="inboxSign">
+        <summary>Add a character</summary>
+        <div class="pair">
+          <input class="field full" id="inName" type="text" maxlength="12" autocomplete="off" placeholder="Character" aria-label="Donor character name">
+          <input class="field full" id="inCode" type="text" maxlength="20" autocomplete="off" placeholder="Vault code" aria-label="Vault code">
+        </div>
+        <button class="btn xs" id="inBtn" type="button">Show its requests</button>
+      </details>
+      <div id="inboxMsg" aria-live="polite"></div>
+    </section>
     <aside class="order frame" aria-labelledby="orderTitle">
       <h2 id="orderTitle">Your request</h2>
       <ul class="lines" id="lines"></ul>
@@ -356,7 +393,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     </aside>
     <section class="frame log" id="log" aria-labelledby="logTitle" hidden>
       <h2 id="logTitle">Recent requests</h2>
-      <p class="hint">What players asked for on this site. Trades happen in game, so this is not proof that items changed hands.</p>
+      <p class="hint">What players asked for on this site. Trades happen in game: "delivered" is the donor's own confirmation.</p>
       <ul class="log-list" id="logList"></ul>
     </section>
     </div>
@@ -417,7 +454,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
 
 <dialog id="done" aria-labelledby="doneTitle">
   <h2 id="doneTitle">Requests ready</h2>
-  <p>Paste each message in the game chat. If a donor is offline, send them the same list by in-game mail.</p>
+  <p>Paste each message in the game chat. If a donor is offline, send them the same list by in-game mail. Each donor also finds your request waiting on this site.</p>
   <div id="requests"></div>
   <div class="row"><button class="btn ghost" id="closeBtn" type="button">Close</button></div>
 </dialog>
@@ -432,7 +469,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
   var API_URL = String(CFG.supabaseUrl || '').replace(/\/+$/, ''), API_KEY = String(CFG.supabaseAnonKey || '');
   var LIVE = !!(API_URL && API_KEY);
   var MAX_AGE_DAYS = CFG.maxAgeDays || 30;
-  var MAX_LINES = 8, MAX_QTY = 60, CHAT_LIMIT = 255;
+  var MAX_LINES = 8, MAX_QTY = 60, CHAT_LIMIT = 255, INBOX_DAYS = 30;
   var MODES = [[1, 'Hardcore'], [2, 'Ironman'], [4, 'Bloodthirsty']];
   var NO_GEAR_SLOTS = { '': 1, INVTYPE_BAG: 1, INVTYPE_AMMO: 1, INVTYPE_QUIVER: 1 };
   var ICON_CDN = 'https://wow.zamimg.com/images/wow/icons/large/';
@@ -475,7 +512,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
   '858=inv_potion_50,929=inv_potion_51,1710=inv_potion_52,3928=inv_potion_53,6149=inv_potion_73,5633=inv_potion_21,12190=inv_potion_83,9155=inv_potion_30,10592=inv_potion_36,13453=inv_potion_59,9233=inv_potion_53,3012=inv_scroll_02,10309=inv_scroll_02,27498=inv_scroll_02,955=inv_scroll_01,8932=inv_misc_food_37,4457=inv_misc_food_18,2888=inv_misc_food_48,27657=inv_misc_food_86_basilisk,3220=inv_misc_food_49,5525=inv_misc_shell_02,2304=inv_misc_armorkit_17,2313=inv_misc_armorkit_15,4265=inv_misc_armorkit_16,6043=inv_misc_orb_01,2581=inv_misc_bandage_18,3531=inv_misc_bandage_17,6451=inv_misc_bandage_02,8545=inv_misc_bandage_20,6452=inv_misc_slime_01,6811=inv_misc_spyglass_01,9312=spell_ice_magicdamage,5206=inv_misc_herb_07,5765=inv_misc_bag_07_black,856=inv_misc_bag_05,4498=inv_misc_bag_09,5573=inv_misc_bag_03,4560=inv_sword_24,2488=inv_sword_20,1411=inv_staff_02,3026=inv_weapon_bow_02,5347=inv_wand_04,6256=inv_fishingpole_02,14169=inv_shoulder_06,14157=inv_shoulder_06,14126=inv_shoulder_09,6566=inv_shoulder_13,10405=inv_shoulder_27,15313=inv_shoulder_08,4700=inv_shoulder_08,6588=inv_shoulder_27,1793=inv_shoulder_06,15496=inv_shoulder_23,4694=inv_shoulder_28,6579=inv_shoulder_27,15505=inv_shoulder_27,10407=inv_shoulder_23,14728=inv_shoulder_07,3030=inv_ammo_arrow_02,8067=inv_ammo_bullet_02,8068=inv_ammo_bullet_02,4382=inv_gizmo_bronzeframework_01,4371=inv_gizmo_pipe_01,4364=inv_misc_dust_02,4363=inv_gizmo_03,4370=inv_misc_bomb_01,4852=inv_misc_ammo_bullet_01,4405=inv_misc_spyglass_02,4406=inv_misc_spyglass_02,2996=inv_fabric_linen_02,2997=inv_fabric_wool_03,4305=inv_fabric_silk_03,4339=inv_fabric_mageweave_03,14256=inv_fabric_felrag,33567=inv_misc_leatherscrap_16,33568=inv_misc_leatherscrap_15,7286=inv_misc_monsterscales_03,15416=inv_misc_monsterscales_07,25699=inv_misc_leatherscrap_12,2841=inv_ingot_bronze,3857=inv_ore_tin_01,2836=inv_stone_09,12365=inv_misc_stonetablet_07,12644=inv_stone_grindingstone_05,11370=inv_ore_mithril_01,3173=inv_misc_food_71,3730=inv_misc_food_14,35562=inv_misc_food_13,27669=inv_misc_food_70,27422=inv_misc_fish_37,3172=inv_misc_organ_05,2450=inv_misc_root_01,8836=inv_misc_herb_13,13463=inv_misc_herb_dreamfoil,22710=inv_misc_herb_11,22790=inv_misc_herb_ancientlichen,37921=inv_misc_herb_constrictorgrass,7067=inv_ore_iron_01,7068=spell_fire_fire,7069=spell_nature_tranquility,7075=inv_stone_05,7081=spell_nature_cyclone,37704=inv_elemental_crystal_life,17056=inv_feather_04,17057=inv_misc_monsterscales_08,17058=inv_potion_64'
     .split(',').forEach(function (p) { var a = p.split('='); DEMO_ICON[a[0]] = a[1]; });
 
-  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [] };
+  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [], inbox: null, inboxOpen: false, delivery: false };
   var share = null;            // parsed export waiting to be uploaded
   var demoVaults = [], demoLog = [];   // demo mode only
   var $ = function (id) { return document.getElementById(id); };
@@ -621,7 +658,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     return j;
   }
   function logRow(v) {
-    return { when: v.created_at, requester: String(v.requester || ''), race: raceKey(v.race), gender: genderKey(v.gender),
+    return { id: v.id, delivered: v.delivered_at || '', when: v.created_at, requester: String(v.requester || ''), race: raceKey(v.race), gender: genderKey(v.gender),
       donor: String(v.donor || ''), donorRace: raceKey(v.donor_race), donorGender: genderKey(v.donor_gender),
       items: (Array.isArray(v.items) ? v.items : []).filter(Array.isArray).map(function (a) {
         var icon = String(a[4] || '').toLowerCase(), q = parseInt(a[2], 10);
@@ -632,17 +669,42 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
   // Returns null when the log is not available (database not migrated yet, or unreachable).
   async function apiLogList(mask) {
     if (!LIVE) return demoLog.filter(function (r) { return r.mask === mask || r.mask === 0; });
+    var cols = 'created_at,requester,race,gender,donor,donor_race,donor_gender,items', q = '&mask=eq.' + mask + '&order=created_at.desc&limit=30';
     try {
-      var r = await fetch(API_URL + '/rest/v1/requests?select=created_at,requester,race,gender,donor,donor_race,donor_gender,items&mask=eq.' + mask +
-        '&order=created_at.desc&limit=30', { headers: headers() });
+      var r = await fetch(API_URL + '/rest/v1/requests?select=id,delivered_at,' + cols + q, { headers: headers() });
+      state.delivery = r.ok;
+      // Database not migrated yet (no delivered_at column): read the original columns.
+      if (!r.ok) r = await fetch(API_URL + '/rest/v1/requests?select=' + cols + q, { headers: headers() });
       if (!r.ok) return null;
       return (await r.json()).map(logRow);
     } catch (e) { return null; }
   }
+  // Requests addressed to the given donors, newest first. Null when not available.
+  async function apiInbox(names) {
+    if (!names.length) return [];
+    if (!LIVE) return demoLog.filter(function (r) { return names.indexOf(r.donor) >= 0; });
+    var since = new Date(Date.now() - INBOX_DAYS * 864e5).toISOString();
+    try {
+      var r = await fetch(API_URL + '/rest/v1/requests?select=id,delivered_at,created_at,requester,race,gender,donor,donor_race,donor_gender,items' +
+        '&donor=in.(' + names.map(encodeURIComponent).join(',') + ')&created_at=gte.' + encodeURIComponent(since) +
+        '&order=created_at.desc&limit=100', { headers: headers() });
+      if (!r.ok) return null;
+      return (await r.json()).map(logRow);
+    } catch (e) { return null; }
+  }
+  // Marks a request as delivered or waiting again; with no id it only checks the donor's vault code.
+  async function apiMark(donor, code, id, delivered) {
+    if (LIVE) return rpc('mark_request', { p_donor: donor, p_code: code, p_id: id, p_delivered: delivered !== false });
+    var v = demoVaults.filter(function (x) { return x.character === donor; })[0];
+    if (!v) throw new Error('not_found');
+    if (v.code && v.code !== code) throw new Error('wrong_code');
+    demoLog.forEach(function (r) { if (id !== null && r.id === id) r.delivered = delivered !== false ? new Date().toISOString() : ''; });
+    return { ok: true };
+  }
   async function apiLog(p) {
     if (LIVE) return rpc('log_request', { p_requester: p.requester, p_donor: p.donor, p_items: p.items, p_race: p.race || null, p_gender: p.gender || null });
     var d = demoVaults.filter(function (v) { return v.character === p.donor; })[0] || {};
-    demoLog.unshift({ mask: 0, when: new Date().toISOString(), requester: p.requester, race: p.race, gender: p.gender, donor: p.donor,
+    demoLog.unshift({ id: Date.now(), delivered: '', mask: 0, when: new Date().toISOString(), requester: p.requester, race: p.race, gender: p.gender, donor: p.donor,
       donorRace: d.race || '', donorGender: d.gender || '', items: p.shown });
   }
   async function apiUpload(p) {
@@ -674,6 +736,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     invalid_items: 'The item list is too large or damaged. Export again with /ivault and retry.',
     too_many_new_vaults: 'Too many new lists were created in the last hour. Try again later.',
     not_found: 'There is no list for this character.',
+    request_not_found: 'That request is no longer in the log.',
     network: 'The vault could not be reached. Check your connection and try again.'
   };
   function errText(e) { return ERRORS[e && e.message] || 'Something went wrong (' + ((e && e.message) || 'unknown') + '). Try again.'; }
@@ -697,8 +760,8 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     ];
     var pick = function (list, i, qty) { var it = list[i % list.length]; return { id: it.id, qty: qty, q: it.q, name: it.name, icon: it.icon }; };
     demoLog = [
-      { mask: 0, when: new Date(now - 25 * 6e4).toISOString(), requester: 'Tundrawolf', race: 'tauren', gender: 'male', donor: 'Frostmule', donorRace: 'dwarf', donorGender: 'male', items: [pick(a, 0, 5), pick(a, 9, 2)] },
-      { mask: 0, when: new Date(now - 7 * 36e5).toISOString(), requester: 'Elunara', race: 'nightelf', gender: 'female', donor: 'Saronite', donorRace: 'bloodelf', donorGender: 'female', items: [pick(b, 2, 10)] }
+      { id: 2, delivered: '', mask: 0, when: new Date(now - 25 * 6e4).toISOString(), requester: 'Tundrawolf', race: 'tauren', gender: 'male', donor: 'Frostmule', donorRace: 'dwarf', donorGender: 'male', items: [pick(a, 0, 5), pick(a, 9, 2)] },
+      { id: 1, delivered: new Date(now - 5 * 36e5).toISOString(), mask: 0, when: new Date(now - 7 * 36e5).toISOString(), requester: 'Elunara', race: 'nightelf', gender: 'female', donor: 'Saronite', donorRace: 'bloodelf', donorGender: 'female', items: [pick(b, 2, 10)] }
     ];
   }
 
@@ -771,7 +834,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     var seq = ++onlineSeq, list = await ccGet('/characters/online', 4);
     if (seq !== onlineSeq || !Array.isArray(list)) return;
     var map = {}; list.forEach(function (p) { if (p && p.name) map[String(p.name).toLowerCase()] = 1; });
-    state.online = map; renderCatalog(); renderOrder(); renderLog();
+    state.online = map; renderCatalog(); renderOrder(); renderLog(); renderInbox();
   }
   // Donors whose character died after their last upload cannot trade any more: their stock is hidden.
   async function loadFallen(mask) {
@@ -958,7 +1021,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
     // Public log, best effort: a failure here never blocks the request itself.
     Promise.all(order.map(function (who) {
       return Promise.resolve(apiLog({ requester: name, donor: who, items: sent[who].ids, shown: sent[who].shown, race: race, gender: gender })).catch(function () {});
-    })).then(loadLog);
+    })).then(function () { loadLog(); loadInbox(); });
   }
 
   /* ---------- request log ---------- */
@@ -971,18 +1034,91 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
       var t = el('time', { datetime: r.when, text: agoFine(r.when) });
       ul.appendChild(el('li', { class: 'log-row' }, [
         el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender), el('span', { class: 'arrow', text: 'asked' }),
-          whoNode(r.donor, r.donorRace, r.donorGender), t]),
-        el('div', { class: 'log-items' }, r.items.map(function (it) {
-          return el('span', {}, [el('span', { class: 'mini' }, [iconNode(it, 'g-spark')]), el('span', { class: 'q' + it.q, text: it.qty + '× ' + it.name })]);
-        }))
+          whoNode(r.donor, r.donorRace, r.donorGender), r.delivered ? el('span', { class: 'tag ok', text: 'delivered' }) : null, t]),
+        itemsNode(r)
       ]));
     });
+  }
+  function itemsNode(r) {
+    return el('div', { class: 'log-items' }, r.items.map(function (it) {
+      return el('span', {}, [el('span', { class: 'mini' }, [iconNode(it, 'g-spark')]), el('span', { class: 'q' + it.q, text: it.qty + '× ' + it.name })]);
+    }));
   }
   var logSeq = 0;
   async function loadLog() {
     var seq = ++logSeq, rows = state.mask ? await apiLogList(state.mask) : [];
     if (seq !== logSeq) return;
-    state.log = rows; renderLog();
+    state.log = rows; renderLog(); renderInbox();
+  }
+
+  /* ---------- donor inbox: requests waiting for the characters this browser holds a vault code for ---------- */
+  function myChars() {
+    var out = [], pre = 'ironvault.code.';
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(pre) === 0 && validName(k.slice(pre.length))) out.push({ name: cleanName(k.slice(pre.length)), code: localStorage.getItem(k) || '' });
+      }
+    } catch (e) {}
+    return out.sort(function (a, b) { return a.name.localeCompare(b.name); });
+  }
+  function inboxMsg(text, ok) { var b = $('inboxMsg'); b.textContent = ''; if (text) b.appendChild(note(text, ok)); }
+  function renderInbox() {
+    var sec = $('inbox'), mine = myChars(), rows = state.inbox || [];
+    var waiting = rows.filter(function (r) { return !r.delivered; }), done = rows.filter(function (r) { return r.delivered; });
+    $('inboxLink').hidden = !state.delivery;
+    $('inboxLink').textContent = 'Requests for you' + (waiting.length ? ' (' + waiting.length + ')' : '');
+    document.title = (waiting.length ? '(' + waiting.length + ') ' : '') + 'Iron Vault';
+    sec.hidden = !state.delivery || state.inbox === null || !(mine.length || state.inboxOpen);
+    if (sec.hidden) return;
+    $('inboxCount').textContent = waiting.length ? String(waiting.length) : ''; $('inboxCount').hidden = !waiting.length;
+    $('inboxHint').textContent = !mine.length ? 'For donors: enter the character you shared and its vault code to see who asked you for items.'
+      : waiting.length ? 'Trade or mail the items in game, then mark the request as delivered.'
+      : 'Nothing waiting for ' + mine.map(function (c) { return c.name; }).join(', ') + '.';
+    var row = function (r) {
+      var btn = el('button', { class: 'btn xs' + (r.delivered ? ' ghost' : ''), type: 'button', text: r.delivered ? 'Undo' : 'Mark delivered',
+        on: { click: function () { markRequest(r, !r.delivered, btn); } } });
+      return el('li', { class: 'log-row' }, [
+        el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender),
+          mine.length > 1 ? el('span', { class: 'arrow', text: 'asked ' + r.donor }) : null,
+          el('time', { datetime: r.when, text: agoFine(r.when) })]),
+        itemsNode(r),
+        el('div', { class: 'row' }, [btn, r.delivered ? el('span', { class: 'hint', text: 'delivered ' + agoFine(r.delivered) }) : null])
+      ]);
+    };
+    var ul = $('inboxList'), dl = $('inboxDoneList'); ul.textContent = ''; dl.textContent = '';
+    waiting.forEach(function (r) { ul.appendChild(row(r)); });
+    done.forEach(function (r) { dl.appendChild(row(r)); });
+    ul.hidden = !waiting.length;
+    $('inboxDone').hidden = !done.length; $('inboxDoneSum').textContent = 'Delivered (' + done.length + ')';
+    if (!mine.length) $('inboxSign').open = true;
+  }
+  async function markRequest(r, delivered, btn) {
+    var me = myChars().filter(function (c) { return c.name === r.donor; })[0];
+    if (!me) return;
+    btn.disabled = true; inboxMsg('');
+    try { await apiMark(r.donor, me.code, r.id, delivered); }
+    catch (e) { inboxMsg(e.message === 'wrong_code' ? 'The vault code saved in this browser for ' + r.donor + ' no longer matches. Enter it again below.' : errText(e)); btn.disabled = false; return; }
+    await loadInbox(); loadLog();
+  }
+  var inboxSeq = 0;
+  async function loadInbox() {
+    var seq = ++inboxSeq, rows = await apiInbox(myChars().map(function (c) { return c.name; }));
+    if (seq !== inboxSeq) return;
+    state.inbox = rows; renderInbox();
+  }
+  async function signIn() {
+    var name = $('inName').value.trim(), code = $('inCode').value.trim().toUpperCase(), btn = $('inBtn');
+    if (!validName(name)) return inboxMsg(ERRORS.invalid_character);
+    if (!code) return inboxMsg('Enter the vault code you received when you first uploaded the list.');
+    name = cleanName(name); btn.disabled = true; inboxMsg('');
+    try {
+      await apiMark(name, code, null, true);
+      lsSet('ironvault.code.' + name.toLowerCase(), code);
+      $('inName').value = ''; $('inCode').value = ''; $('inboxSign').open = false;
+      await loadInbox();
+    } catch (e) { inboxMsg(errText(e)); }
+    btn.disabled = false;
   }
 
   /* ---------- sharing an inventory ---------- */
@@ -1083,7 +1219,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
       state.error = 'The vault could not be loaded. Check your connection and reload the page.';
     }
     state.loading = false; aggregate(); renderDonors(); renderCatalog(); renderOrder();
-    loadLog(); loadOnline();
+    loadLog(); loadOnline(); loadInbox();
   }
 
   /* ---------- recognising characters by name ---------- */
@@ -1142,6 +1278,14 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
   $('recipient').addEventListener('change', lookupMe);
   $('recipient').addEventListener('input', function () { meSeq++; clearTimeout(meTimer); $('meCard').hidden = true; });
   setInterval(function () { if (!document.hidden) loadOnline(); }, 5 * 6e4);
+  // A donor who leaves the tab open sees new requests arrive (count in the tab title).
+  setInterval(function () { if (!document.hidden && myChars().length) loadInbox(); }, 2 * 6e4);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && myChars().length) loadInbox(); });
+  $('inboxLink').addEventListener('click', function (e) {
+    e.preventDefault(); state.inboxOpen = true; renderInbox();
+    if (!$('inbox').hidden) $('inbox').scrollIntoView({ block: 'start' });
+  });
+  $('inBtn').addEventListener('click', signIn);
   $('closeBtn').addEventListener('click', function () { $('done').close(); });
   $('readBtn').addEventListener('click', readExport);
   $('uploadBtn').addEventListener('click', upload);
@@ -1157,7 +1301,7 @@ dialog.share textarea { width: 100%; min-height: 110px; margin: 10px 0; font: .8
   $('recipient').value = lsGet('ironvault.me') || '';
   fillRaces($('myRace'), true); fillRaces($('shareRace'), true);
   $('myRace').value = raceKey(lsGet('ironvault.race')); $('myGender').value = genderKey(lsGet('ironvault.gender')) || 'male';
-  if (!LIVE) { buildDemo(); $('modePill').hidden = false; }
+  if (!LIVE) { buildDemo(); $('modePill').hidden = false; state.delivery = true; }
   load(); lookupMe();
 })();
 </script>
