@@ -201,6 +201,28 @@
       return (await r.json()).map(logRow);
     } catch (e) { return null; }
   }
+  // Removes a request: with the requester's token, or as the donor with the vault code.
+  async function apiCancel(id, token, donor, code) {
+    if (LIVE) return rpc('cancel_request', { p_id: id, p_token: token || null, p_donor: donor || null, p_code: code || null });
+    demoLog = demoLog.filter(function (r) { return r.id !== id; });
+    return { cancelled: true };
+  }
+  // Cancel tokens of the requests made from this browser: { id: token }, newest 40 kept.
+  function myTokens() { try { return JSON.parse(lsGet('ironvault.reqs') || '{}') || {}; } catch (e) { return {}; } }
+  function saveToken(id, token) {
+    var t = myTokens(); if (token) t[id] = token; else delete t[id];
+    Object.keys(t).sort(function (a, b) { return b - a; }).slice(40).forEach(function (k) { delete t[k]; });
+    lsSet('ironvault.reqs', JSON.stringify(t));
+  }
+  // A button that asks for a second press before acting.
+  function armedButton(label, act) {
+    var armed = false, timer = 0;
+    var b = el('button', { class: 'btn xs ghost', type: 'button', text: label, on: { click: function () {
+      if (!armed) { armed = true; b.textContent = 'Press again'; timer = setTimeout(function () { armed = false; b.textContent = label; }, 4000); return; }
+      clearTimeout(timer); b.disabled = true; act(b);
+    } } });
+    return b;
+  }
   // Marks a request as delivered or waiting again; with no id it only checks the donor's vault code.
   async function apiMark(donor, code, id, delivered) {
     if (LIVE) return rpc('mark_request', { p_donor: donor, p_code: code, p_id: id, p_delivered: delivered !== false });
@@ -213,8 +235,10 @@
   async function apiLog(p) {
     if (LIVE) return rpc('log_request', { p_requester: p.requester, p_donor: p.donor, p_items: p.items, p_race: p.race || null, p_gender: p.gender || null });
     var d = demoVaults.filter(function (v) { return v.character === p.donor; })[0] || {};
-    demoLog.unshift({ id: Date.now(), delivered: '', mask: 0, when: new Date().toISOString(), requester: p.requester, race: p.race, gender: p.gender, donor: p.donor,
+    var nid = Date.now();
+    demoLog.unshift({ id: nid, delivered: '', mask: 0, when: new Date().toISOString(), requester: p.requester, race: p.race, gender: p.gender, donor: p.donor,
       donorRace: d.race || '', donorGender: d.gender || '', items: p.shown });
+    return { id: nid, token: 'demo' };
   }
   async function apiUpload(p) {
     if (LIVE) {
@@ -246,6 +270,7 @@
     too_many_new_vaults: 'Too many new lists were created in the last hour. Try again later.',
     not_found: 'There is no list for this character.',
     request_not_found: 'That request is no longer in the log.',
+    already_delivered: 'The donor already marked this request as delivered, so it stays in the log.',
     network: 'The vault could not be reached. Check your connection and try again.'
   };
   function errText(e) { return ERRORS[e && e.message] || 'Something went wrong (' + ((e && e.message) || 'unknown') + '). Try again.'; }
@@ -529,7 +554,8 @@
     var d = $('done'); if (d.showModal) d.showModal(); else d.setAttribute('open', '');
     // Public log, best effort: a failure here never blocks the request itself.
     Promise.all(order.map(function (who) {
-      return Promise.resolve(apiLog({ requester: name, donor: who, items: sent[who].ids, shown: sent[who].shown, race: race, gender: gender })).catch(function () {});
+      return Promise.resolve(apiLog({ requester: name, donor: who, items: sent[who].ids, shown: sent[who].shown, race: race, gender: gender }))
+        .then(function (res) { if (res && res.id && res.token) saveToken(res.id, res.token); }).catch(function () {});
     })).then(function () { loadLog(); loadInbox(); });
   }
 
@@ -539,14 +565,24 @@
     if (state.log === null || !state.mask) { sec.hidden = true; return; }
     sec.hidden = false;
     if (!state.log.length) return ul.appendChild(el('li', { class: 'empty', text: 'No requests yet for ' + modeName(state.mask) + '.' }));
+    var tokens = myTokens();
     state.log.forEach(function (r) {
       var t = el('time', { datetime: r.when, text: agoFine(r.when) });
+      var mine = r.id && tokens[r.id] && !r.delivered ? el('div', { class: 'row' }, [armedButton('Cancel request', function (b) { cancelMine(r, b); }),
+        el('span', { class: 'hint', text: 'Your request, still waiting.' })]) : null;
       ul.appendChild(el('li', { class: 'log-row' }, [
         el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender), el('span', { class: 'arrow', text: 'asked' }),
           whoNode(r.donor, r.donorRace, r.donorGender), r.delivered ? el('span', { class: 'tag ok', text: 'delivered' }) : null, t]),
-        itemsNode(r)
+        itemsNode(r), mine
       ]));
     });
+  }
+  async function cancelMine(r, btn) {
+    try { await apiCancel(r.id, myTokens()[r.id]); }
+    catch (e) {
+      if (e.message !== 'request_not_found') { notify(e.message === 'wrong_code' ? 'This request can no longer be cancelled from this browser.' : errText(e)); btn.disabled = false; if (e.message !== 'already_delivered') return; }
+    }
+    saveToken(r.id, null); loadLog(); loadInbox();
   }
   function itemsNode(r) {
     return el('div', { class: 'log-items' }, r.items.map(function (it) {
@@ -592,7 +628,8 @@
           mine.length > 1 ? el('span', { class: 'arrow', text: 'asked ' + r.donor }) : null,
           el('time', { datetime: r.when, text: agoFine(r.when) })]),
         itemsNode(r),
-        el('div', { class: 'row' }, [btn, r.delivered ? el('span', { class: 'hint', text: 'delivered ' + agoFine(r.delivered) }) : null])
+        el('div', { class: 'row' }, [btn, r.delivered ? el('span', { class: 'hint', text: 'delivered ' + agoFine(r.delivered) })
+          : armedButton('Remove', function (b) { removeRequest(r, b); })])
       ]);
     };
     var ul = $('inboxList'), dl = $('inboxDoneList'); ul.textContent = ''; dl.textContent = '';
@@ -608,6 +645,17 @@
     btn.disabled = true; inboxMsg('');
     try { await apiMark(r.donor, me.code, r.id, delivered); }
     catch (e) { inboxMsg(e.message === 'wrong_code' ? 'The vault code saved in this browser for ' + r.donor + ' no longer matches. Enter it again below.' : errText(e)); btn.disabled = false; return; }
+    await loadInbox(); loadLog();
+  }
+  async function removeRequest(r, btn) {
+    var me = myChars().filter(function (c) { return c.name === r.donor; })[0];
+    if (!me) return;
+    inboxMsg('');
+    try { await apiCancel(r.id, '', r.donor, me.code); }
+    catch (e) {
+      if (e.code === 'PGRST202') { inboxMsg('Removing requests is not available yet.'); btn.disabled = false; return; }
+      if (e.message !== 'request_not_found') { inboxMsg(e.message === 'wrong_code' ? 'The vault code saved in this browser for ' + r.donor + ' no longer matches. Enter it again below.' : errText(e)); btn.disabled = false; return; }
+    }
     await loadInbox(); loadLog();
   }
   var inboxSeq = 0;
