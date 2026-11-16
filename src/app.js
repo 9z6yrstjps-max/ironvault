@@ -196,6 +196,7 @@
       items: (Array.isArray(v.items) ? v.items : []).filter(Array.isArray).map(function (a) {
         var icon = String(a[4] || '').toLowerCase(), q = parseInt(a[2], 10);
         return { id: parseInt(a[0], 10) || 0, qty: parseInt(a[1], 10) || 1, q: q >= 0 && q <= 7 ? q : 1, name: String(a[3] || '').slice(0, 80),
+          suffix: /^-?\d+$/.test(String(a[5])) ? String(a[5]) : '',
           icon: /^[a-z0-9_]+$/.test(icon) ? icon : '' };
       }) };
   }
@@ -669,7 +670,7 @@
     if (sec.hidden) return;
     $('inboxCount').textContent = waiting.length ? String(waiting.length) : ''; $('inboxCount').hidden = !waiting.length;
     $('inboxHint').textContent = !mine.length ? 'For donors: enter the character you shared and its vault code to see who asked you for items.'
-      : waiting.length ? 'Trade or mail the items in game, then mark the request as delivered: the items are taken off your list.'
+      : waiting.length ? 'Trade or mail the items in game, then mark the request as delivered: the items are taken off your list. With the addon, Copy /ivault send prepares the mail for you at a mailbox.'
       : 'Nothing waiting for ' + mine.map(function (c) { return c.name; }).join(', ') + '.';
     var row = function (r) {
       var btn = el('button', { class: 'btn xs' + (r.delivered ? ' ghost' : ''), type: 'button', text: r.delivered ? 'Undo' : 'Mark delivered',
@@ -680,7 +681,8 @@
           el('time', { datetime: r.when, text: agoFine(r.when) })]),
         itemsNode(r),
         el('div', { class: 'row' }, [btn, r.delivered ? el('span', { class: 'hint', text: 'Delivered ' + agoFine(r.delivered) })
-          : armedButton('Remove', function (b) { removeRequest(r, b); })])
+          : armedButton('Remove', function (b) { removeRequest(r, b); })]),
+        r.delivered ? null : sendRow(r)
       ]);
     };
     var ul = $('inboxList'), dl = $('inboxDoneList'); ul.textContent = ''; dl.textContent = '';
@@ -689,6 +691,16 @@
     ul.hidden = !waiting.length;
     $('inboxDone').hidden = !done.length; $('inboxDoneSum').textContent = 'Delivered (' + done.length + ')';
     if (!mine.length) $('inboxSign').open = true;
+  }
+  // The command addon 0.6 understands: at a mailbox it fills in the mail and attaches the items; the player presses Send.
+  function sendRow(r) {
+    var cmd = '/ivault send ' + r.requester + ' ' + r.items.map(function (it) { return it.id + ':' + (it.suffix || '') + ':' + it.qty; }).join(' ');
+    var msg = el('span', { class: 'hint', 'aria-live': 'polite' });
+    var b = el('button', { class: 'btn xs ghost', type: 'button', text: 'Copy /ivault send', title: cmd, on: { click: function () {
+      var fail = function () { msg.textContent = cmd; };   // shown so it can be copied by hand
+      try { navigator.clipboard.writeText(cmd).then(function () { msg.textContent = 'Copied: paste it in game, at a mailbox.'; }, fail); } catch (e) { fail(); }
+    } } });
+    return el('div', { class: 'row send' }, [b, msg]);
   }
   async function markRequest(r, delivered, btn) {
     var me = myChars().filter(function (c) { return c.name === r.donor; })[0];

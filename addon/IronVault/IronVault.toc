@@ -1,6 +1,6 @@
 ## Interface: 30300
 ## Title: IronVault
 ## Notes: Exports the bank character's bags, bank and gold for the Iron Vault site. Saved at logout, with what you mailed or traded away; /ivault shows it as text.
-## Version: 0.5
+## Version: 0.6
 ## SavedVariables: IronVaultDB
 IronVault.lua

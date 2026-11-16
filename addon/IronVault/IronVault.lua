@@ -1,6 +1,7 @@
--- IronVault 0.5 (WoW 3.3.5a)
--- Read-only: it scans bags and bank and keeps the result as text, shown by /ivault and saved with the
--- addon's settings. It never moves items, sends mail or presses anything for you.
+-- IronVault 0.6 (WoW 3.3.5a)
+-- It scans bags and bank and keeps the result as text, shown by /ivault and saved with the addon's settings.
+-- On its own it only reads. The one thing it does with your items happens when you type /ivault send at a
+-- mailbox: it fills in a mail and attaches the items you named. It never presses Send: that is always you.
 --
 -- Export format, one record per line, fields separated by "^":
 --   IRONVAULT1^character^copper^date^race^sex^bankSeen^class^level^challenges
@@ -361,8 +362,234 @@ local function reminder()
   end
 end
 
+-- ---------- /ivault send: prepares a mail for a request; the player checks it and presses Send ----------
+local mailOpen = false
+local job = nil     -- { to, wants = { { id, suffix, qty } }, steps, i, wait, got, notes }
+local MAX_ATTACH = ATTACHMENTS_MAX_SEND or 12
+
+local function slotInfo(bag, slot)
+  local _, count, locked = GetContainerItemInfo(bag, slot)
+  return count or 0, locked
+end
+local function freeAttachment()
+  for i = 1, MAX_ATTACH do
+    if not GetSendMailItem(i) then
+      return i
+    end
+  end
+  return nil
+end
+
+-- Decides which bag slots to attach. Whole stacks first; one split per item when the amount asked is not a
+-- sum of whole stacks (the split part goes to an empty bag slot first, as the game requires).
+local function planJob(j)
+  local used, empties, attachments = {}, {}, 0
+  for bag = 0, NUM_BAG_SLOTS do
+    local _, bagType = GetContainerNumFreeSlots(bag)
+    if (bagType or 0) == 0 then
+      for slot = 1, GetContainerNumSlots(bag) or 0 do
+        if not GetContainerItemLink(bag, slot) then
+          empties[#empties + 1] = { bag, slot }
+        end
+      end
+    end
+  end
+  j.steps, j.got, j.notes = {}, {}, {}
+  for _, w in ipairs(j.wants) do
+    local cands, name = {}, nil
+    for bag = 0, NUM_BAG_SLOTS do
+      for slot = 1, GetContainerNumSlots(bag) or 0 do
+        local link = GetContainerItemLink(bag, slot)
+        if link and not used[bag .. ":" .. slot] then
+          local id, suffix = parseLink(link)
+          if id == w.id and (w.suffix == nil or suffix == w.suffix) and not isBound(bag, slot) then
+            cands[#cands + 1] = { bag = bag, slot = slot, count = slotInfo(bag, slot) }
+            name = name or link:match("%[(.-)%]")
+          end
+        end
+      end
+    end
+    table.sort(cands, function(a, b) return a.count > b.count end)
+    local need = w.qty
+    for _, c in ipairs(cands) do
+      if need > 0 and c.count > 0 and c.count <= need and attachments < MAX_ATTACH then
+        j.steps[#j.steps + 1] = { kind = "attach", bag = c.bag, slot = c.slot }
+        used[c.bag .. ":" .. c.slot] = true
+        need = need - c.count
+        attachments = attachments + 1
+      end
+    end
+    if need > 0 and attachments < MAX_ATTACH then
+      local from
+      for i = #cands, 1, -1 do     -- smallest stack that is large enough
+        local c = cands[i]
+        if not used[c.bag .. ":" .. c.slot] and c.count > need then
+          from = c
+          break
+        end
+      end
+      if from then
+        local e = table.remove(empties)
+        if e then
+          j.steps[#j.steps + 1] = { kind = "split", bag = from.bag, slot = from.slot, n = need, ebag = e[1], eslot = e[2] }
+          used[from.bag .. ":" .. from.slot] = true
+          attachments = attachments + 1
+          need = 0
+        end
+      end
+    end
+    local label = name or ("item " .. w.id)
+    if need > 0 then
+      local have = 0
+      for _, c in ipairs(cands) do
+        have = have + c.count
+      end
+      local why = #cands == 0 and " (not in your bags: is it in the bank?)"
+        or have < w.qty and " (only " .. have .. " in your bags)"
+        or attachments >= MAX_ATTACH and " (a mail holds 12 attachments)"
+        or " (no free bag slot to split a stack)"
+      j.notes[#j.notes + 1] = (w.qty - need) .. " of " .. w.qty .. " " .. label .. why
+    else
+      j.got[#j.got + 1] = w.qty .. "x " .. label
+    end
+  end
+end
+
+local function stopJob(msg)
+  if CursorHasItem() then
+    ClearCursor()
+  end
+  job = nil
+  if msg then
+    say(msg)
+  end
+end
+
+local function finishJob()
+  local j = job
+  job = nil
+  if #j.got > 0 then
+    say("mail for " .. j.to .. " is ready: " .. table.concat(j.got, ", ") .. ". Check it and press Send.")
+  end
+  for _, n in ipairs(j.notes) do
+    say("|cffff6b5enot complete|r: " .. n)
+  end
+  if #j.got == 0 and #j.notes == 0 then
+    say("nothing to attach.")
+  end
+end
+
+-- One small step at a time, so the game can confirm each move before the next.
+local function runJob(elapsed)
+  if not job or not mailOpen then
+    return
+  end
+  job.wait = (job.wait or 0) - elapsed
+  if job.wait > 0 then
+    return
+  end
+  if not job.started then
+    job.started = true
+    if not pcall(MailFrameTab_OnClick, nil, 2) and MailFrameTab2 then
+      MailFrameTab2:Click()
+    end
+    ClearSendMail()
+    SendMailNameEditBox:SetText(job.to)
+    SendMailSubjectEditBox:SetText("Iron Vault")
+    planJob(job)
+    job.i = 1
+    job.wait = 0.3
+    return
+  end
+  local st = job.steps[job.i]
+  if not st then
+    finishJob()
+    return
+  end
+  st.tries = (st.tries or 0) + 1
+  if st.tries > 25 then
+    job.notes[#job.notes + 1] = "one stack could not be attached, add it by hand"
+    if CursorHasItem() then
+      ClearCursor()
+    end
+    job.i = job.i + 1
+    return
+  end
+  job.wait = 0.2
+  if st.kind == "split" then
+    if not st.moved then
+      local _, locked = slotInfo(st.bag, st.slot)
+      if locked then
+        return
+      end
+      if CursorHasItem() then
+        ClearCursor()
+      end
+      SplitContainerItem(st.bag, st.slot, st.n)
+      if CursorHasItem() then
+        PickupContainerItem(st.ebag, st.eslot)
+        st.moved = true
+      end
+      return
+    end
+    local count, locked = slotInfo(st.ebag, st.eslot)
+    if not GetContainerItemLink(st.ebag, st.eslot) or locked or count ~= st.n then
+      return     -- still on its way
+    end
+    st.kind, st.bag, st.slot = "attach", st.ebag, st.eslot
+  end
+  local _, locked = slotInfo(st.bag, st.slot)
+  if locked then
+    return
+  end
+  local idx = freeAttachment()
+  if not idx then
+    job.notes[#job.notes + 1] = "no attachment slot left"
+    job.i = job.i + 1
+    return
+  end
+  if CursorHasItem() then
+    ClearCursor()
+  end
+  PickupContainerItem(st.bag, st.slot)
+  if CursorHasItem() then
+    ClickSendMailItemButton(idx)
+  end
+  if CursorHasItem() then
+    ClearCursor()
+  end
+  if GetSendMailItem(idx) then
+    job.i = job.i + 1
+  end
+end
+
+-- "/ivault send Name 929:0:5 9999:7:1": recipient, then itemId:suffixId:quantity for each item (suffixId may be empty).
+local function startSend(text)
+  local to, list = text:match("^(%S+)%s+(.+)$")
+  if not to or to:find("[%d%p]") then
+    say("usage: /ivault send Name itemId:suffixId:quantity ... (copy it from Requests for you on the site)")
+    return
+  end
+  local wants = {}
+  for id, suffix, qty in list:gmatch("(%d+):(%-?%d*):(%d+)") do
+    if #wants < 12 and tonumber(qty) > 0 then
+      wants[#wants + 1] = { id = tonumber(id), suffix = tonumber(suffix), qty = tonumber(qty) }
+    end
+  end
+  if #wants == 0 then
+    say("no items in that command. Copy it again from the site.")
+    return
+  end
+  job = { to = to, wants = wants, wait = 0 }
+  if not mailOpen then
+    say("request for " .. to .. " noted: open a mailbox and the mail will be prepared. (/ivault send cancel to drop it)")
+  end
+end
+
 local remindIn = nil
 local events = CreateFrame("Frame")
+events:RegisterEvent("MAIL_SHOW")
+events:RegisterEvent("MAIL_CLOSED")
 events:RegisterEvent("MAIL_SEND_SUCCESS")
 events:RegisterEvent("MAIL_FAILED")
 events:RegisterEvent("TRADE_ACCEPT_UPDATE")
@@ -375,7 +602,14 @@ events:RegisterEvent("BANKFRAME_CLOSED")
 events:RegisterEvent("PLAYERBANKSLOTS_CHANGED")
 events:RegisterEvent("BAG_UPDATE")
 events:SetScript("OnEvent", function(self, event, a1, a2)
-  if event == "MAIL_SEND_SUCCESS" then
+  if event == "MAIL_SHOW" then
+    mailOpen = true
+  elseif event == "MAIL_CLOSED" then
+    mailOpen = false
+    if job and job.started then
+      stopJob("mailbox closed: the mail was not prepared. Paste the command again to retry.")
+    end
+  elseif event == "MAIL_SEND_SUCCESS" then
     if mailDraft then
       remember(mailDraft.to, "mail", mailDraft.items)
       mailDraft = nil
@@ -423,6 +657,12 @@ events:SetScript("OnEvent", function(self, event, a1, a2)
   end
 end)
 events:SetScript("OnUpdate", function(self, elapsed)
+  if job then
+    local ok, err = pcall(runJob, elapsed)
+    if not ok then
+      stopJob("could not prepare the mail (" .. tostring(err) .. ").")
+    end
+  end
   if remindIn then
     remindIn = remindIn - elapsed
     if remindIn <= 0 then
@@ -443,7 +683,17 @@ end)
 SLASH_IRONVAULT1 = "/ivault"
 SLASH_IRONVAULT2 = "/ironvault"
 SlashCmdList["IRONVAULT"] = function(msg)
-  msg = string.lower(msg or "")
+  local raw = (msg or ""):gsub("^%s+", "")
+  msg = string.lower(raw)
+  if msg:sub(1, 4) == "send" then
+    local rest = raw:sub(5):gsub("^%s+", ""):gsub("%s+$", "")
+    if rest == "cancel" or rest == "" and job then
+      stopJob("send cancelled.")
+    else
+      startSend(rest)
+    end
+    return
+  end
   local c = mine()
   if msg == "quiet" then
     IronVaultDB.quiet = not IronVaultDB.quiet
