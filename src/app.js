@@ -618,7 +618,7 @@
     if (sec.hidden) return;
     $('inboxCount').textContent = waiting.length ? String(waiting.length) : ''; $('inboxCount').hidden = !waiting.length;
     $('inboxHint').textContent = !mine.length ? 'For donors: enter the character you shared and its vault code to see who asked you for items.'
-      : waiting.length ? 'Trade or mail the items in game, then mark the request as delivered.'
+      : waiting.length ? 'Trade or mail the items in game, then mark the request as delivered: the items are taken off your list.'
       : 'Nothing waiting for ' + mine.map(function (c) { return c.name; }).join(', ') + '.';
     var row = function (r) {
       var btn = el('button', { class: 'btn xs' + (r.delivered ? ' ghost' : ''), type: 'button', text: r.delivered ? 'Undo' : 'Mark delivered',
@@ -645,7 +645,7 @@
     btn.disabled = true; inboxMsg('');
     try { await apiMark(r.donor, me.code, r.id, delivered); }
     catch (e) { inboxMsg(e.message === 'wrong_code' ? 'The vault code saved in this browser for ' + r.donor + ' no longer matches. Enter it again below.' : errText(e)); btn.disabled = false; return; }
-    await loadInbox(); loadLog();
+    await load();   // the donor's stock changes with the delivery, so the catalog is read again
   }
   async function removeRequest(r, btn) {
     var me = myChars().filter(function (c) { return c.name === r.donor; })[0];

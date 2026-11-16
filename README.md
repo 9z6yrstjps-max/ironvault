@@ -17,12 +17,13 @@ Sito statico (GitHub Pages) + database Supabase. Nessun account richiesto ai gio
 | `supabase/migration-002-requests.sql` | Da eseguire dopo `schema.sql`: razza dei personaggi e registro pubblico delle richieste (`requests`, `log_request()`). |
 | `supabase/migration-003-inbox.sql` | Da eseguire dopo la 002: richieste in attesa per i donatori e conferma di consegna (`delivered_at`, `mark_request()`). |
 | `supabase/migration-004-cancel.sql` | Da eseguire dopo la 003: annullamento delle richieste da parte di chi le ha fatte o del donatore (`cancel_request()`). |
+| `supabase/migration-005-stock.sql` | Da eseguire dopo la 004: segnare una richiesta come consegnata scala gli oggetti dalla lista del donatore. |
 | `addon/IronVault/` | Addon per il client 3.3.5a. `IronVault.zip` è lo stesso addon pronto da scaricare dal sito. |
 | `src/` | Sorgenti della pagina (HTML, CSS, JavaScript, icone, dati demo). |
 
 ## Messa in linea
 
-1. **Supabase**: crea un progetto, apri *SQL Editor*, incolla `supabase/schema.sql` ed esegui; poi fai lo stesso con `supabase/migration-002-requests.sql` , `supabase/migration-003-inbox.sql` e `supabase/migration-004-cancel.sql`.
+1. **Supabase**: crea un progetto, apri *SQL Editor*, incolla `supabase/schema.sql` ed esegui; poi fai lo stesso con `supabase/migration-002-requests.sql` , `supabase/migration-003-inbox.sql`, `supabase/migration-004-cancel.sql` e `supabase/migration-005-stock.sql`.
 2. **Chiavi**: in *Project Settings > API* copia l'URL del progetto e la chiave pubblica (`anon` o `publishable`)
    dentro `config.js`. Non usare mai la chiave `service_role` / `secret`.
 3. **GitHub**: carica il contenuto di questa cartella in un repository e attiva *Settings > Pages* sul ramo principale, cartella `/`.
