@@ -304,6 +304,10 @@ details.auto p { margin: 8px 0; }
 .donor small { color: var(--mist); font-size: .8rem; line-height: 1.3; }
 .donor .dnote { font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
 .donor.all { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; }
+
+/* Request sent: one block per donor with the items. */
+#requests .req .log-items { margin-top: 6px; }
+#requests .req.failed h3 { color: #ff8a7a; }
 </style>
 </head>
 <body>
@@ -356,8 +360,8 @@ details.auto p { margin: 8px 0; }
             <ol>
               <li>Tick the challenges your character runs. You only see donors with the exact same set, because only they can trade with you.</li>
               <li>Press + (or right click a row) to add an item to your request.</li>
-              <li>Enter your character name and press Prepare requests.</li>
-              <li>Whisper each donor the message you get. If they are offline, send it by in-game mail. Either way, the donor finds your request waiting on this site.</li>
+              <li>Enter your character name and press Send request.</li>
+              <li>The donor finds your request on this site, even if they are offline, and sends the items by in-game mail. Check your mailbox.</li>
             </ol>
           </div>
           <div>
@@ -424,7 +428,7 @@ details.auto p { margin: 8px 0; }
         </div>
       </div>
       <div id="notices" aria-live="polite"></div>
-      <button class="btn" id="confirm" type="button">Prepare requests</button>
+      <button class="btn" id="confirm" type="button">Send request</button>
     </aside>
     <section class="frame log" id="log" aria-labelledby="logTitle" hidden>
       <h2 id="logTitle">Recent requests</h2>
@@ -501,8 +505,8 @@ details.auto p { margin: 8px 0; }
 </dialog>
 
 <dialog id="done" aria-labelledby="doneTitle">
-  <h2 id="doneTitle">Requests ready</h2>
-  <p>Paste each message in the game chat. If a donor is offline, send them the same list by in-game mail. Each donor also finds your request waiting on this site. Changed your mind? Cancel it from Recent requests, in this browser.</p>
+  <h2 id="doneTitle">Request sent</h2>
+  <p id="doneText">Each donor finds it waiting on this site and sends the items by in-game mail, usually the next time they log in. Nothing to whisper. Changed your mind? Cancel it from Recent requests, in this browser.</p>
   <div id="requests"></div>
   <div class="row"><button class="btn ghost" id="closeBtn" type="button">Close</button></div>
 </dialog>
@@ -517,7 +521,7 @@ details.auto p { margin: 8px 0; }
   var API_URL = String(CFG.supabaseUrl || '').replace(/\/+$/, ''), API_KEY = String(CFG.supabaseAnonKey || '');
   var LIVE = !!(API_URL && API_KEY);
   var MAX_AGE_DAYS = CFG.maxAgeDays || 30;
-  var MAX_LINES = 8, MAX_QTY = 60, CHAT_LIMIT = 255, INBOX_DAYS = 30;
+  var MAX_LINES = 8, MAX_QTY = 60, INBOX_DAYS = 30;
   var MODES = [[1, 'Hardcore'], [2, 'Ironman'], [4, 'Bloodthirsty']];
   var NO_GEAR_SLOTS = { '': 1, INVTYPE_BAG: 1, INVTYPE_AMMO: 1, INVTYPE_QUIVER: 1 };
   var ICON_CDN = 'https://wow.zamimg.com/images/wow/icons/large/';
@@ -836,6 +840,7 @@ details.auto p { margin: 8px 0; }
     too_many_new_vaults: 'Too many new lists were created in the last hour. Try again later.',
     not_found: 'There is no list for this character.',
     request_not_found: 'That request is no longer in the log.',
+    too_many_requests: 'Too many requests on the site in the last hour. Try again later.',
     already_delivered: 'The donor already marked this request as delivered, so it stays in the log.',
     network: 'The vault could not be reached. Check your connection and try again.'
   };
@@ -1097,56 +1102,51 @@ details.auto p { margin: 8px 0; }
     $('emptyHint').hidden = keys.length > 0;
   }
 
-  // One or more chat lines per donor, each within WoW's 255-character limit.
-  function whisperLines(who, me, parts) {
-    var first = '/w ' + who + ' Iron Vault request for ' + me + ': ', next = '/w ' + who + ' ...and: ';
-    var lines = [], cur = first, empty = true;
-    parts.forEach(function (p) {
-      var add = (empty ? '' : ', ') + p;
-      if (!empty && (cur + add).length > CHAT_LIMIT) { lines.push(cur); cur = next + p; }
-      else { cur += add; empty = false; }
-    });
-    lines.push(cur);
-    return lines;
-  }
-  function copyButton(text) {
-    var msg = el('span', { class: 'hint', 'aria-live': 'polite' });
-    var b = el('button', { class: 'btn', type: 'button', text: 'Copy', on: { click: function () {
-      var fail = function () { msg.textContent = 'Copy failed. Select the text and copy it by hand.'; };
-      try { navigator.clipboard.writeText(text).then(function () { msg.textContent = 'Copied.'; }, fail); } catch (e) { fail(); }
-    } } });
-    return el('div', { class: 'row' }, [b, msg]);
-  }
-  function prepare() {
+  // Sends the request: one row per donor in the log, which the donor finds in Requests for you.
+  // Donors are often offline, so nothing has to be pasted in game: the items arrive by mail.
+  var sending = false;
+  async function prepare() {
+    if (sending) return;
     var name = $('recipient').value.trim(), keys = Object.keys(state.cart);
     if (!keys.length) return notify('Your request is empty. Add an item first.');
     if (!validName(name)) return notify('Enter your character name: 2 to 12 letters, no spaces or numbers.');
     name = cleanName(name); lsSet('ironvault.me', name);
     var race = $('myRace').value, gender = race ? $('myGender').value : '';
     lsSet('ironvault.race', race); lsSet('ironvault.gender', $('myGender').value);
-    var by = {}, order = [], sent = {};
+    var order = [], sent = {};
     keys.forEach(function (k) {
       var a = byKey(k), line = state.cart[k]; if (!a) return;
       if (line.who.toLowerCase() === name.toLowerCase()) return;
-      if (!by[line.who]) { by[line.who] = []; order.push(line.who); sent[line.who] = { ids: [], shown: [] }; }
-      by[line.who].push(line.qty + 'x ' + a.name);
+      if (!sent[line.who]) { order.push(line.who); sent[line.who] = { ids: [], shown: [], keys: [] }; }
       sent[line.who].ids.push([a.id, a.suffix, line.qty]);
       sent[line.who].shown.push({ id: a.id, qty: line.qty, q: a.q, name: a.name, icon: a.icon });
+      sent[line.who].keys.push(k);
     });
     if (!order.length) return notify('Every item in this request is from your own list.');
-    var box = $('requests'); box.textContent = '';
-    order.forEach(function (who) {
-      var text = whisperLines(who, name, by[who]).join('\n');
-      var where = !state.online ? '' : isOnline(who) ? ' (online now)' : ' (offline: send it by in-game mail)';
-      box.appendChild(el('div', { class: 'req' }, [el('h3', { text: 'Whisper ' + who + where }), el('pre', { text: text }), copyButton(text)]));
-    });
-    notify('');
-    var d = $('done'); if (d.showModal) d.showModal(); else d.setAttribute('open', '');
-    // Public log, best effort: a failure here never blocks the request itself.
-    Promise.all(order.map(function (who) {
+    var btn = $('confirm'); sending = true; btn.disabled = true; btn.textContent = 'Sending…'; notify('');
+    var results = await Promise.all(order.map(function (who) {
       return Promise.resolve(apiLog({ requester: name, donor: who, items: sent[who].ids, shown: sent[who].shown, race: race, gender: gender }))
-        .then(function (res) { if (res && res.id && res.token) saveToken(res.id, res.token); }).catch(function () {});
-    })).then(function () { loadLog(); loadInbox(); });
+        .then(function (res) { if (res && res.id && res.token) saveToken(res.id, res.token); return { who: who, ok: true }; },
+              function (e) { return { who: who, ok: false, err: e }; });
+    }));
+    sending = false; btn.disabled = false; btn.textContent = 'Send request';
+    var box = $('requests'); box.textContent = '';
+    results.forEach(function (res) {
+      var items = sent[res.who].shown;
+      if (res.ok) sent[res.who].keys.forEach(function (k) { delete state.cart[k]; });   // sent: off the request box
+      box.appendChild(el('div', { class: 'req' + (res.ok ? '' : ' failed') }, [
+        el('h3', { text: (res.ok ? 'Sent to ' : 'Not sent to ') + res.who }),
+        itemsNode({ items: items }),
+        res.ok ? null : el('p', { class: 'hint', text: (res.err && res.err.message === 'too_many_requests'
+          ? 'Too many requests on the site in the last hour.' : 'The site could not save it.') + ' The items are still in your request: try again later.' })
+      ]));
+    });
+    var okCount = results.filter(function (x) { return x.ok; }).length;
+    $('doneTitle').textContent = okCount === results.length ? (okCount > 1 ? 'Requests sent' : 'Request sent') : okCount ? 'Some requests not sent' : 'Request not sent';
+    $('doneText').hidden = !okCount;
+    renderOrder();
+    var d = $('done'); if (d.showModal) d.showModal(); else d.setAttribute('open', '');
+    loadLog(); loadInbox();
   }
 
   /* ---------- request log ---------- */

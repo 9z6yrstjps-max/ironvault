@@ -304,6 +304,10 @@ details.auto p { margin: 8px 0; }
 .donor small { color: var(--mist); font-size: .8rem; line-height: 1.3; }
 .donor .dnote { font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
 .donor.all { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; }
+
+/* Request sent: one block per donor with the items. */
+#requests .req .log-items { margin-top: 6px; }
+#requests .req.failed h3 { color: #ff8a7a; }
 </style>
 </head>
 <body>
@@ -322,7 +326,7 @@ details.auto p { margin: 8px 0; }
     <h2 id="whatTitle">What it is</h2>
     <div class="two">
       <p>Challenge characters can only trade with characters running the <b>exact same set of challenges</b>. That makes spare cloth, potions, gems and bags hard to pass on, and hard to find when you need them.</p>
-      <p>Iron Vault is a shared list of what players are willing to give away. You pick your challenges, see what donors with the same set have in stock, and get a ready-made whisper to send them in game. Everything is free.</p>
+      <p>Iron Vault is a shared list of what players are willing to give away. You pick your challenges, see what donors with the same set have in stock, and send them a request from the site: they mail you the items in game, even if they were offline when you asked. Everything is free.</p>
     </div>
   </section>
 
@@ -337,8 +341,8 @@ details.auto p { margin: 8px 0; }
     <ol class="steps">
       <li><b>Open the vault</b> and tick the challenges your character runs.</li>
       <li><b>Add what you need</b> to your request with the + button, up to 8 different items.</li>
-      <li><b>Enter your character name</b> and press Prepare requests.</li>
-      <li><b>Whisper the donor</b> in game with the message you get. If they are offline, send it by in-game mail.</li>
+      <li><b>Enter your character name</b> and press Send request.</li>
+      <li><b>Check your mailbox.</b> The donor sees your request on the site and mails you the items, usually the next time they log in.</li>
     </ol>
     <p class="hint">You do not need the addon or an account to take items.</p>
   </section>

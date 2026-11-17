@@ -33,8 +33,8 @@
             <ol>
               <li>Tick the challenges your character runs. You only see donors with the exact same set, because only they can trade with you.</li>
               <li>Press + (or right click a row) to add an item to your request.</li>
-              <li>Enter your character name and press Prepare requests.</li>
-              <li>Whisper each donor the message you get. If they are offline, send it by in-game mail. Either way, the donor finds your request waiting on this site.</li>
+              <li>Enter your character name and press Send request.</li>
+              <li>The donor finds your request on this site, even if they are offline, and sends the items by in-game mail. Check your mailbox.</li>
             </ol>
           </div>
           <div>
@@ -101,7 +101,7 @@
         </div>
       </div>
       <div id="notices" aria-live="polite"></div>
-      <button class="btn" id="confirm" type="button">Prepare requests</button>
+      <button class="btn" id="confirm" type="button">Send request</button>
     </aside>
     <section class="frame log" id="log" aria-labelledby="logTitle" hidden>
       <h2 id="logTitle">Recent requests</h2>
@@ -178,8 +178,8 @@
 </dialog>
 
 <dialog id="done" aria-labelledby="doneTitle">
-  <h2 id="doneTitle">Requests ready</h2>
-  <p>Paste each message in the game chat. If a donor is offline, send them the same list by in-game mail. Each donor also finds your request waiting on this site. Changed your mind? Cancel it from Recent requests, in this browser.</p>
+  <h2 id="doneTitle">Request sent</h2>
+  <p id="doneText">Each donor finds it waiting on this site and sends the items by in-game mail, usually the next time they log in. Nothing to whisper. Changed your mind? Cancel it from Recent requests, in this browser.</p>
   <div id="requests"></div>
   <div class="row"><button class="btn ghost" id="closeBtn" type="button">Close</button></div>
 </dialog>

@@ -4,7 +4,7 @@
   var API_URL = String(CFG.supabaseUrl || '').replace(/\/+$/, ''), API_KEY = String(CFG.supabaseAnonKey || '');
   var LIVE = !!(API_URL && API_KEY);
   var MAX_AGE_DAYS = CFG.maxAgeDays || 30;
-  var MAX_LINES = 8, MAX_QTY = 60, CHAT_LIMIT = 255, INBOX_DAYS = 30;
+  var MAX_LINES = 8, MAX_QTY = 60, INBOX_DAYS = 30;
   var MODES = [[1, 'Hardcore'], [2, 'Ironman'], [4, 'Bloodthirsty']];
   var NO_GEAR_SLOTS = { '': 1, INVTYPE_BAG: 1, INVTYPE_AMMO: 1, INVTYPE_QUIVER: 1 };
   var ICON_CDN = 'https://wow.zamimg.com/images/wow/icons/large/';
@@ -297,6 +297,7 @@
     too_many_new_vaults: 'Too many new lists were created in the last hour. Try again later.',
     not_found: 'There is no list for this character.',
     request_not_found: 'That request is no longer in the log.',
+    too_many_requests: 'Too many requests on the site in the last hour. Try again later.',
     already_delivered: 'The donor already marked this request as delivered, so it stays in the log.',
     network: 'The vault could not be reached. Check your connection and try again.'
   };
@@ -558,56 +559,51 @@
     $('emptyHint').hidden = keys.length > 0;
   }
 
-  // One or more chat lines per donor, each within WoW's 255-character limit.
-  function whisperLines(who, me, parts) {
-    var first = '/w ' + who + ' Iron Vault request for ' + me + ': ', next = '/w ' + who + ' ...and: ';
-    var lines = [], cur = first, empty = true;
-    parts.forEach(function (p) {
-      var add = (empty ? '' : ', ') + p;
-      if (!empty && (cur + add).length > CHAT_LIMIT) { lines.push(cur); cur = next + p; }
-      else { cur += add; empty = false; }
-    });
-    lines.push(cur);
-    return lines;
-  }
-  function copyButton(text) {
-    var msg = el('span', { class: 'hint', 'aria-live': 'polite' });
-    var b = el('button', { class: 'btn', type: 'button', text: 'Copy', on: { click: function () {
-      var fail = function () { msg.textContent = 'Copy failed. Select the text and copy it by hand.'; };
-      try { navigator.clipboard.writeText(text).then(function () { msg.textContent = 'Copied.'; }, fail); } catch (e) { fail(); }
-    } } });
-    return el('div', { class: 'row' }, [b, msg]);
-  }
-  function prepare() {
+  // Sends the request: one row per donor in the log, which the donor finds in Requests for you.
+  // Donors are often offline, so nothing has to be pasted in game: the items arrive by mail.
+  var sending = false;
+  async function prepare() {
+    if (sending) return;
     var name = $('recipient').value.trim(), keys = Object.keys(state.cart);
     if (!keys.length) return notify('Your request is empty. Add an item first.');
     if (!validName(name)) return notify('Enter your character name: 2 to 12 letters, no spaces or numbers.');
     name = cleanName(name); lsSet('ironvault.me', name);
     var race = $('myRace').value, gender = race ? $('myGender').value : '';
     lsSet('ironvault.race', race); lsSet('ironvault.gender', $('myGender').value);
-    var by = {}, order = [], sent = {};
+    var order = [], sent = {};
     keys.forEach(function (k) {
       var a = byKey(k), line = state.cart[k]; if (!a) return;
       if (line.who.toLowerCase() === name.toLowerCase()) return;
-      if (!by[line.who]) { by[line.who] = []; order.push(line.who); sent[line.who] = { ids: [], shown: [] }; }
-      by[line.who].push(line.qty + 'x ' + a.name);
+      if (!sent[line.who]) { order.push(line.who); sent[line.who] = { ids: [], shown: [], keys: [] }; }
       sent[line.who].ids.push([a.id, a.suffix, line.qty]);
       sent[line.who].shown.push({ id: a.id, qty: line.qty, q: a.q, name: a.name, icon: a.icon });
+      sent[line.who].keys.push(k);
     });
     if (!order.length) return notify('Every item in this request is from your own list.');
-    var box = $('requests'); box.textContent = '';
-    order.forEach(function (who) {
-      var text = whisperLines(who, name, by[who]).join('\n');
-      var where = !state.online ? '' : isOnline(who) ? ' (online now)' : ' (offline: send it by in-game mail)';
-      box.appendChild(el('div', { class: 'req' }, [el('h3', { text: 'Whisper ' + who + where }), el('pre', { text: text }), copyButton(text)]));
-    });
-    notify('');
-    var d = $('done'); if (d.showModal) d.showModal(); else d.setAttribute('open', '');
-    // Public log, best effort: a failure here never blocks the request itself.
-    Promise.all(order.map(function (who) {
+    var btn = $('confirm'); sending = true; btn.disabled = true; btn.textContent = 'Sending…'; notify('');
+    var results = await Promise.all(order.map(function (who) {
       return Promise.resolve(apiLog({ requester: name, donor: who, items: sent[who].ids, shown: sent[who].shown, race: race, gender: gender }))
-        .then(function (res) { if (res && res.id && res.token) saveToken(res.id, res.token); }).catch(function () {});
-    })).then(function () { loadLog(); loadInbox(); });
+        .then(function (res) { if (res && res.id && res.token) saveToken(res.id, res.token); return { who: who, ok: true }; },
+              function (e) { return { who: who, ok: false, err: e }; });
+    }));
+    sending = false; btn.disabled = false; btn.textContent = 'Send request';
+    var box = $('requests'); box.textContent = '';
+    results.forEach(function (res) {
+      var items = sent[res.who].shown;
+      if (res.ok) sent[res.who].keys.forEach(function (k) { delete state.cart[k]; });   // sent: off the request box
+      box.appendChild(el('div', { class: 'req' + (res.ok ? '' : ' failed') }, [
+        el('h3', { text: (res.ok ? 'Sent to ' : 'Not sent to ') + res.who }),
+        itemsNode({ items: items }),
+        res.ok ? null : el('p', { class: 'hint', text: (res.err && res.err.message === 'too_many_requests'
+          ? 'Too many requests on the site in the last hour.' : 'The site could not save it.') + ' The items are still in your request: try again later.' })
+      ]));
+    });
+    var okCount = results.filter(function (x) { return x.ok; }).length;
+    $('doneTitle').textContent = okCount === results.length ? (okCount > 1 ? 'Requests sent' : 'Request sent') : okCount ? 'Some requests not sent' : 'Request not sent';
+    $('doneText').hidden = !okCount;
+    renderOrder();
+    var d = $('done'); if (d.showModal) d.showModal(); else d.setAttribute('open', '');
+    loadLog(); loadInbox();
   }
 
   /* ---------- request log ---------- */
