@@ -20,6 +20,10 @@ def page(title, body, scripts=""):
 <meta name="theme-color" content="#050a13">
 <meta name="description" content="{DESC}">
 <title>{title}</title>
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
