@@ -304,7 +304,6 @@ details.auto p { margin: 8px 0; }
 .donor small { color: var(--mist); font-size: .8rem; line-height: 1.3; }
 .donor .dnote { font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
 .donor.all { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; }
-.inbox .row.send .hint { overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -356,7 +355,7 @@ details.auto p { margin: 8px 0; }
       <li><b>Keep the code</b> you receive. It is the only way to update or remove your list.</li>
       <li><b>Keep it fresh without copying.</b> The addon saves your inventory every time you log out. In Chrome or Edge, point the vault at the saved file once (Share your inventory, Automatic updates) and your list refreshes by itself while the page is open.</li>
     </ol>
-    <p class="hint">The addon only reads your bags and bank. On its own the addon only reads your bags and bank, skipping soulbound and quest items, and notes what you mail or trade away so fulfilled requests can be marked as delivered. The one thing it does with your items is on your command: <code>/ivault send</code>, copied from a request, fills in a mail at the mailbox and attaches the items. Pressing Send is always up to you.</p>
+    <p class="hint">The addon only reads your bags and bank. It skips soulbound and quest items, and it never moves items, sends mail or presses anything for you. It also notes what you mail or trade away yourself, so requests you fulfilled can be marked as delivered.</p>
   </section>
 
   <section class="frame block warn" aria-labelledby="aboutTitle">
