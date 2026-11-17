@@ -186,3 +186,7 @@ details.auto p { margin: 8px 0; }
 /* Request box: warning for a donor list not refreshed for a week. */
 .line .stale { flex-basis: 100%; color: #e8b04a; font-size: .8rem; }
 .side section.log > :not(.log-list) { flex: none; }
+/* When the inbox and the request box fill the column, the log keeps room for a few rows and the column scrolls. */
+.side { overflow-y: auto; overscroll-behavior: contain; }
+.side section.log { min-height: 280px; flex-shrink: 0; flex-basis: auto; }
+.side section.log:last-child { flex-grow: 1; }
