@@ -321,6 +321,22 @@ details.auto p { margin: 8px 0; }
 .side { overflow-y: auto; overscroll-behavior: contain; }
 .side section.log { min-height: 280px; flex-shrink: 0; flex-basis: auto; }
 .side section.log:last-child { flex-grow: 1; }
+
+/* Wanted: items players look for, under the catalog. */
+section.wanted { padding: 12px 16px; margin-top: 8px; }
+section.wanted[hidden] { display: none; }
+section.wanted h2 { font: 600 1.15rem var(--display); color: var(--gold); margin: 0 0 2px; }
+.wanted .log-list { max-height: 360px; overflow: auto; }
+.want .wname { color: #fff; font-weight: 600; text-decoration: none; }
+.want .wname:hover { text-decoration: underline; }
+.want.instock { border-left: 3px solid var(--ok); }
+.want .row { margin: 4px 0 0; gap: 8px; align-items: center; flex-wrap: wrap; }
+.wanted details { margin-top: 10px; }
+.wanted summary { cursor: pointer; color: var(--frost); font-weight: 600; }
+.want-fields { display: grid; grid-template-columns: 2fr 2fr 70px; gap: 8px; margin: 8px 0; }
+@media (max-width: 700px) { .want-fields { grid-template-columns: 1fr; } }
+#wantMsg { margin-top: 8px; }
+.item .tag.want { border-color: #e8b04a; color: #e8b04a; font-size: .7rem; padding: 0 6px; }
 </style>
 </head>
 <body>
@@ -343,7 +359,7 @@ details.auto p { margin: 8px 0; }
     <div>
       <h1>Iron Vault</h1>
       <p class="sub">Community stock for <b>ChromieCraft challenge</b> characters</p>
-      <nav class="nav"><a href="./">About &amp; addon install</a><a href="#log">Recent requests</a><a href="#inbox" id="inboxLink" hidden>Requests for you</a><a href="#share">Share your inventory</a></nav>
+      <nav class="nav"><a href="./">About &amp; addon install</a><a href="#wanted" id="wantedLink" hidden>Wanted</a><a href="#log">Recent requests</a><a href="#inbox" id="inboxLink" hidden>Requests for you</a><a href="#share">Share your inventory</a></nav>
     </div>
     <div class="stats">
       <span class="pill" id="modePill" hidden>Demo data: database not connected</span>
@@ -400,6 +416,23 @@ details.auto p { margin: 8px 0; }
         <input class="search" id="search" type="search" placeholder="Search items…" aria-label="Search items">
       </div>
       <div id="catalog"></div>
+
+      <section class="frame wanted" id="wanted" aria-labelledby="wantedTitle" hidden>
+        <h2 id="wantedTitle">Wanted <span class="badge" id="wantCount" hidden></span></h2>
+        <p class="hint">Items players of this challenge set are looking for and nobody offers yet. Donors: if you have one, share it and the player can ask for it.</p>
+        <ul class="log-list" id="wantList"></ul>
+        <details id="wantForm">
+          <summary>Ask for an item nobody offers</summary>
+          <p class="hint">Find the item on <a href="https://www.wowhead.com/wotlk/items" target="_blank" rel="noopener">Wowhead</a> and paste the link of its page. It uses the character and race from Your request, and stays for 30 days.</p>
+          <div class="pair want-fields">
+            <input class="field full" id="wantLink" type="text" autocomplete="off" placeholder="wowhead.com/wotlk/item=14046/runecloth-bag" aria-label="Wowhead link or item number">
+            <input class="field full" id="wantName" type="text" maxlength="60" autocomplete="off" placeholder="Item name" aria-label="Item name">
+            <input class="field" id="wantQty" type="number" min="1" max="200" value="1" aria-label="Quantity">
+          </div>
+          <button class="btn xs" id="wantBtn" type="button">Add to Wanted</button>
+        </details>
+        <div id="wantMsg" aria-live="polite"></div>
+      </section>
 
     </main>
 
@@ -580,9 +613,9 @@ details.auto p { margin: 8px 0; }
   '858=inv_potion_50,929=inv_potion_51,1710=inv_potion_52,3928=inv_potion_53,6149=inv_potion_73,5633=inv_potion_21,12190=inv_potion_83,9155=inv_potion_30,10592=inv_potion_36,13453=inv_potion_59,9233=inv_potion_53,3012=inv_scroll_02,10309=inv_scroll_02,27498=inv_scroll_02,955=inv_scroll_01,8932=inv_misc_food_37,4457=inv_misc_food_18,2888=inv_misc_food_48,27657=inv_misc_food_86_basilisk,3220=inv_misc_food_49,5525=inv_misc_shell_02,2304=inv_misc_armorkit_17,2313=inv_misc_armorkit_15,4265=inv_misc_armorkit_16,6043=inv_misc_orb_01,2581=inv_misc_bandage_18,3531=inv_misc_bandage_17,6451=inv_misc_bandage_02,8545=inv_misc_bandage_20,6452=inv_misc_slime_01,6811=inv_misc_spyglass_01,9312=spell_ice_magicdamage,5206=inv_misc_herb_07,5765=inv_misc_bag_07_black,856=inv_misc_bag_05,4498=inv_misc_bag_09,5573=inv_misc_bag_03,4560=inv_sword_24,2488=inv_sword_20,1411=inv_staff_02,3026=inv_weapon_bow_02,5347=inv_wand_04,6256=inv_fishingpole_02,14169=inv_shoulder_06,14157=inv_shoulder_06,14126=inv_shoulder_09,6566=inv_shoulder_13,10405=inv_shoulder_27,15313=inv_shoulder_08,4700=inv_shoulder_08,6588=inv_shoulder_27,1793=inv_shoulder_06,15496=inv_shoulder_23,4694=inv_shoulder_28,6579=inv_shoulder_27,15505=inv_shoulder_27,10407=inv_shoulder_23,14728=inv_shoulder_07,3030=inv_ammo_arrow_02,8067=inv_ammo_bullet_02,8068=inv_ammo_bullet_02,4382=inv_gizmo_bronzeframework_01,4371=inv_gizmo_pipe_01,4364=inv_misc_dust_02,4363=inv_gizmo_03,4370=inv_misc_bomb_01,4852=inv_misc_ammo_bullet_01,4405=inv_misc_spyglass_02,4406=inv_misc_spyglass_02,2996=inv_fabric_linen_02,2997=inv_fabric_wool_03,4305=inv_fabric_silk_03,4339=inv_fabric_mageweave_03,14256=inv_fabric_felrag,33567=inv_misc_leatherscrap_16,33568=inv_misc_leatherscrap_15,7286=inv_misc_monsterscales_03,15416=inv_misc_monsterscales_07,25699=inv_misc_leatherscrap_12,2841=inv_ingot_bronze,3857=inv_ore_tin_01,2836=inv_stone_09,12365=inv_misc_stonetablet_07,12644=inv_stone_grindingstone_05,11370=inv_ore_mithril_01,3173=inv_misc_food_71,3730=inv_misc_food_14,35562=inv_misc_food_13,27669=inv_misc_food_70,27422=inv_misc_fish_37,3172=inv_misc_organ_05,2450=inv_misc_root_01,8836=inv_misc_herb_13,13463=inv_misc_herb_dreamfoil,22710=inv_misc_herb_11,22790=inv_misc_herb_ancientlichen,37921=inv_misc_herb_constrictorgrass,7067=inv_ore_iron_01,7068=spell_fire_fire,7069=spell_nature_tranquility,7075=inv_stone_05,7081=spell_nature_cyclone,37704=inv_elemental_crystal_life,17056=inv_feather_04,17057=inv_misc_monsterscales_08,17058=inv_potion_64'
     .split(',').forEach(function (p) { var a = p.split('='); DEMO_ICON[a[0]] = a[1]; });
 
-  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [], inbox: null, inboxOpen: false, delivery: false, logView: 'all', mine: null, dupSig: '' };
+  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [], inbox: null, inboxOpen: false, delivery: false, logView: 'all', mine: null, dupSig: '', wants: null };
   var share = null;            // parsed export waiting to be uploaded
-  var demoVaults = [], demoLog = [];   // demo mode only
+  var demoVaults = [], demoLog = [], demoWants = [];   // demo mode only
   var $ = function (id) { return document.getElementById(id); };
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -760,6 +793,39 @@ details.auto p { margin: 8px 0; }
           icon: /^[a-z0-9_]+$/.test(icon) ? icon : '' };
       }) };
   }
+  /* ---------- Wanted: items a player looks for and nobody offers yet ---------- */
+  function wantRow(v) {
+    return { id: v.id, when: v.created_at, mask: +v.mask || 0, requester: String(v.requester || ''), race: raceKey(v.race), gender: genderKey(v.gender),
+      item: parseInt(v.item_id, 10) || 0, name: String(v.name || '').slice(0, 60), qty: parseInt(v.qty, 10) || 1 };
+  }
+  // Open wants for one challenge set, newest first. Null when not available (database not migrated yet, or unreachable).
+  async function apiWants(mask) {
+    if (!LIVE) return demoWants.filter(function (w) { return !mask || w.mask === mask || w.mask === 0; });
+    var since = new Date(Date.now() - 30 * 864e5).toISOString();
+    try {
+      var r = await fetch(API_URL + '/rest/v1/wants?select=id,created_at,mask,requester,race,gender,item_id,name,qty&mask=eq.' + mask +
+        '&created_at=gte.' + encodeURIComponent(since) + '&order=created_at.desc&limit=60', { headers: headers() });
+      if (!r.ok) return null;
+      return (await r.json()).map(wantRow);
+    } catch (e) { return null; }
+  }
+  async function apiAddWant(w) {
+    if (LIVE) return rpc('add_want', { p_requester: w.requester, p_mask: w.mask, p_item: w.item, p_name: w.name, p_qty: w.qty, p_race: w.race || null, p_gender: w.gender || null });
+    var old = demoWants.filter(function (x) { return x.requester === w.requester && x.item === w.item; })[0];
+    if (old) { old.qty = w.qty; old.when = new Date().toISOString(); return { id: old.id, token: 'demo' }; }
+    var id = Date.now(); demoWants.unshift({ id: id, when: new Date().toISOString(), mask: w.mask, requester: w.requester, race: w.race, gender: w.gender, item: w.item, name: w.name, qty: w.qty });
+    return { id: id, token: 'demo' };
+  }
+  async function apiCancelWant(id, token) {
+    if (LIVE) return rpc('cancel_want', { p_id: id, p_token: token });
+    demoWants = demoWants.filter(function (x) { return x.id !== id; }); return { cancelled: true };
+  }
+  function wantTokens() { try { return JSON.parse(lsGet('ironvault.wants') || '{}') || {}; } catch (e) { return {}; } }
+  function saveWantToken(id, token) {
+    var t = wantTokens(); if (token) t[id] = token; else delete t[id];
+    Object.keys(t).sort(function (a, b) { return b - a; }).slice(40).forEach(function (k) { delete t[k]; });
+    lsSet('ironvault.wants', JSON.stringify(t));
+  }
   // Returns null when the log is not available (database not migrated yet, or unreachable).
   async function apiLogList(mask) {
     if (!LIVE) return demoLog.filter(function (r) { return r.mask === mask || r.mask === 0; });
@@ -869,6 +935,8 @@ details.auto p { margin: 8px 0; }
     too_many_new_vaults: 'Too many new lists were created in the last hour. Try again later.',
     not_found: 'There is no list for this character.',
     request_not_found: 'That request is no longer in the log.',
+    invalid_item: 'That does not look like an item. Paste its Wowhead link, or its number and its name.',
+    too_many_wants: 'You already have 10 items in Wanted. Cancel one first.',
     too_many_requests: 'Too many requests on the site in the last hour. Try again later.',
     already_delivered: 'The donor already marked this request as delivered, so it stays in the log.',
     network: 'The vault could not be reached. Check your connection and try again.'
@@ -893,6 +961,10 @@ details.auto p { margin: 8px 0; }
       { character: 'Saronite', mask: 0, note: 'Demo donor', race: 'bloodelf', gender: 'female', cls: 'mage', level: 61, updated_at: new Date(now - 4 * 864e5).toISOString(), items: b, code: '' }
     ];
     var pick = function (list, i, qty) { var it = list[i % list.length]; return { id: it.id, qty: qty, q: it.q, name: it.name, icon: it.icon }; };
+    demoWants = [
+      { id: 3, when: new Date(Date.now() - 3 * 36e5).toISOString(), mask: 0, requester: 'Tundrawolf', race: 'tauren', gender: 'male', item: 14046, name: 'Runecloth Bag', qty: 2 },
+      { id: 4, when: new Date(Date.now() - 2 * 864e5).toISOString(), mask: 0, requester: 'Elunara', race: 'nightelf', gender: 'female', item: 4306, name: 'Silk Cloth', qty: 20 }
+    ];
     demoLog = [
       { id: 2, delivered: '', mask: 0, when: new Date(now - 25 * 6e4).toISOString(), requester: 'Tundrawolf', race: 'tauren', gender: 'male', donor: 'Frostmule', donorRace: 'dwarf', donorGender: 'male', items: [pick(a, 0, 5), pick(a, 9, 2)] },
       { id: 1, delivered: new Date(now - 5 * 36e5).toISOString(), mask: 0, when: new Date(now - 7 * 36e5).toISOString(), requester: 'Elunara', race: 'nightelf', gender: 'female', donor: 'Saronite', donorRace: 'bloodelf', donorGender: 'female', items: [pick(b, 2, 10)] }
@@ -1067,6 +1139,7 @@ details.auto p { margin: 8px 0; }
           el('a', { class: 'nm q' + a.q, href: url, target: '_blank', rel: 'noopener', text: a.name }),
           el('span', { class: 'holders', title: a.holders.map(function (h) { return h.who + ': updated ' + agoFine(h.when); }).join('\n') },
             [on ? dot() : null, document.createTextNode(donors)]),
+          wantedBy(a.id).length ? el('span', { class: 'tag want', title: 'Wanted by ' + wantedBy(a.id).map(function (w) { return w.requester; }).join(', '), text: 'wanted' }) : null,
           el('button', { class: 'btn sm', type: 'button', 'aria-label': 'Add ' + a.name + ' to request', text: '+', on: { click: function () { addToCart(a.key); } } })
         ]));
       });
@@ -1078,7 +1151,85 @@ details.auto p { margin: 8px 0; }
     if (!order.length) root.appendChild(el('p', { class: 'empty', text: !state.mask ? 'Tick your challenges above.'
       : f ? 'No item matches "' + state.filter + '"' + (only ? ' in ' + only + "'s list." : '.')
       : 'Nobody running ' + modeName(state.mask) + ' has shared an inventory yet. Be the first: press Share your inventory on the right.' }));
+    if (state.mask && state.wants !== null && (f || !order.length)) root.appendChild(el('p', { class: 'hint' }, [
+      document.createTextNode("Can't find what you need? "),
+      el('a', { href: '#wanted', text: 'Add it to Wanted', on: { click: function () { $('wantForm').open = true; } } }),
+      document.createTextNode(' so donors know someone is looking for it.')]));
   }
+  // Wanted: one row per open want of this challenge set; shows when a donor now has the item.
+  function wantedBy(id) { return (state.wants || []).filter(function (w) { return w.item === id; }); }
+  function renderWanted() {
+    var sec = $('wanted'), ul = $('wantList');
+    $('wantedLink').hidden = state.wants === null || !state.mask;
+    sec.hidden = state.wants === null || !state.mask;
+    if (sec.hidden) return;
+    var rows = state.wants, tokens = wantTokens(); ul.textContent = '';
+    $('wantCount').textContent = rows.length ? String(rows.length) : ''; $('wantCount').hidden = !rows.length;
+    if (!rows.length) ul.appendChild(el('li', { class: 'empty', text: 'Nobody running ' + modeName(state.mask) + ' is looking for anything right now.' }));
+    rows.forEach(function (w) {
+      var url = 'https://www.wowhead.com/wotlk/item=' + w.item;
+      var have = state.items.filter(function (a) { return a.id === w.item; });
+      var stock = have.length ? have[0] : null;
+      ul.appendChild(el('li', { class: 'log-row want' + (stock ? ' instock' : '') }, [
+        el('div', { class: 'log-head' }, [
+          el('a', { class: 'wname', href: url, target: '_blank', rel: 'noopener', text: w.qty + '× ' + w.name }),
+          stock ? el('span', { class: 'tag ok', text: 'In stock' }) : null,
+          el('time', { datetime: w.when, text: agoFine(w.when) })
+        ]),
+        el('div', { class: 'row' }, [
+          el('span', { class: 'arrow', text: 'wanted by' }), whoNode(w.requester, w.race, w.gender),
+          stock ? el('span', { class: 'hint', text: 'from ' + stock.holders.map(function (h) { return h.who; }).join(', ') }) : null,
+          stock ? el('button', { class: 'btn xs', type: 'button', text: 'Add to request', on: { click: function () { addToCart(stock.key); } } }) : null,
+          tokens[w.id] ? armedButton('Cancel', function (b) { cancelWant(w, b); }) : null
+        ])
+      ]));
+    });
+  }
+  async function cancelWant(w, btn) {
+    try { await apiCancelWant(w.id, wantTokens()[w.id]); }
+    catch (e) { if (e.message !== 'request_not_found') { wantMsg(e.message === 'wrong_code' ? 'This item can no longer be removed from this browser.' : errText(e)); btn.disabled = false; return; } }
+    saveWantToken(w.id, null); loadWants();
+  }
+  function wantMsg(text, ok) { var b = $('wantMsg'); b.textContent = ''; if (text) b.appendChild(note(text, ok)); }
+  // "https://www.wowhead.com/wotlk/item=14046/runecloth-bag" -> { id: 14046, name: 'Runecloth Bag' }; a bare number gives only the id.
+  function parseWowhead(text) {
+    var t = String(text || '').trim(), m = /item=(\d+)(?:\/([a-z0-9-]+))?/i.exec(t) || /^(\d{1,6})$/.exec(t);
+    if (!m) return null;
+    var name = m[2] ? m[2].split('-').filter(Boolean).map(function (w) {
+      return /^(of|the|and|a|an|to|in|on)$/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1);
+    }).join(' ') : '';
+    if (name) name = name.charAt(0).toUpperCase() + name.slice(1);
+    return { id: parseInt(m[1], 10), name: name };
+  }
+  function readWantLink() {
+    var got = parseWowhead($('wantLink').value);
+    if (got && got.name && !$('wantName').dataset.edited) $('wantName').value = got.name;
+    return got;
+  }
+  async function addWant() {
+    var got = readWantLink(), name = $('wantName').value.trim().replace(/\s+/g, ' '), qty = parseInt($('wantQty').value, 10) || 1;
+    var me = myName();
+    if (!me) return wantMsg('Enter your character name in Your request first.');
+    if (!got || !got.id) return wantMsg('Paste the item\'s Wowhead link (wowhead.com/wotlk/item=…), or its item number.');
+    if (!/^[A-Za-z0-9][A-Za-z0-9 '’:,.()-]{1,59}$/.test(name)) return wantMsg('Write the item name as it appears in game.');
+    var btn = $('wantBtn'); btn.disabled = true; wantMsg('');
+    try {
+      var race = $('myRace').value, res = await apiAddWant({ requester: me, mask: state.mask, item: got.id, name: name, qty: Math.max(1, Math.min(qty, 200)),
+        race: race, gender: race ? $('myGender').value : '' });
+      if (res && res.id && res.token) saveWantToken(res.id, res.token);
+      $('wantLink').value = ''; $('wantName').value = ''; delete $('wantName').dataset.edited; $('wantQty').value = '1';
+      wantMsg(name + ' added to Wanted. Donors of ' + modeName(state.mask) + ' will see it.', true);
+      loadWants();
+    } catch (e) { wantMsg(errText(e)); }
+    btn.disabled = false;
+  }
+  var wantSeq = 0;
+  async function loadWants() {
+    var seq = ++wantSeq, rows = state.mask ? await apiWants(state.mask) : [];
+    if (seq !== wantSeq) return;
+    state.wants = rows; renderWanted(); renderCatalog();
+  }
+
   // Donor cards above the catalog: who shares for this challenge set, with race, class, level and freshness. Clicking one filters the catalog.
   function renderDonors() {
     var box = $('donors'), names = {}, list = [];
@@ -1194,6 +1345,13 @@ details.auto p { margin: 8px 0; }
       ]));
     });
     var okCount = results.filter(function (x) { return x.ok; }).length;
+    // Asked for now: the sender's own wants for those items are done.
+    var asked = {}; results.forEach(function (res) { if (res.ok) sent[res.who].shown.forEach(function (it) { asked[it.id] = true; }); });
+    var wt = wantTokens();
+    (state.wants || []).forEach(function (w) {
+      if (asked[w.item] && wt[w.id] && w.requester.toLowerCase() === name.toLowerCase())
+        Promise.resolve(apiCancelWant(w.id, wt[w.id])).then(function () { saveWantToken(w.id, null); loadWants(); }, function () {});
+    });
     $('doneTitle').textContent = okCount === results.length ? (okCount > 1 ? 'Requests sent' : 'Request sent') : okCount ? 'Some requests not sent' : 'Request not sent';
     $('doneText').hidden = !okCount;
     renderOrder();
@@ -1599,7 +1757,7 @@ details.auto p { margin: 8px 0; }
       state.error = 'The vault could not be loaded. Check your connection and reload the page.';
     }
     state.loading = false; aggregate(); renderDonors(); renderCatalog(); renderOrder();
-    loadLog(); loadOnline(); loadInbox();
+    loadLog(); loadOnline(); loadInbox(); loadWants();
   }
 
   /* ---------- recognising characters by name ---------- */
@@ -1640,6 +1798,10 @@ details.auto p { margin: 8px 0; }
   });
   $('search').addEventListener('input', function (e) { state.filter = e.target.value.trim(); renderCatalog(); });
   $('confirm').addEventListener('click', prepare);
+  $('wantBtn').addEventListener('click', addWant);
+  $('wantLink').addEventListener('input', readWantLink);
+  $('wantName').addEventListener('input', function () { $('wantName').dataset.edited = $('wantName').value ? '1' : ''; if (!$('wantName').value) delete $('wantName').dataset.edited; });
+  $('wantedLink').addEventListener('click', function () { if (!$('wanted').hidden) $('wantForm').open = $('wantForm').open || !(state.wants || []).length; });
   $('logAll').addEventListener('click', function () { state.logView = 'all'; renderLog(); });
   $('logMine').addEventListener('click', function () { state.logView = 'mine'; state.mine = null; renderLog(); loadMine(); });
   $('recipient').addEventListener('change', function () {

@@ -190,3 +190,19 @@ details.auto p { margin: 8px 0; }
 .side { overflow-y: auto; overscroll-behavior: contain; }
 .side section.log { min-height: 280px; flex-shrink: 0; flex-basis: auto; }
 .side section.log:last-child { flex-grow: 1; }
+
+/* Wanted: items players look for, under the catalog. */
+section.wanted { padding: 12px 16px; margin-top: 8px; }
+section.wanted[hidden] { display: none; }
+section.wanted h2 { font: 600 1.15rem var(--display); color: var(--gold); margin: 0 0 2px; }
+.wanted .log-list { max-height: 360px; overflow: auto; }
+.want .wname { color: #fff; font-weight: 600; text-decoration: none; }
+.want .wname:hover { text-decoration: underline; }
+.want.instock { border-left: 3px solid var(--ok); }
+.want .row { margin: 4px 0 0; gap: 8px; align-items: center; flex-wrap: wrap; }
+.wanted details { margin-top: 10px; }
+.wanted summary { cursor: pointer; color: var(--frost); font-weight: 600; }
+.want-fields { display: grid; grid-template-columns: 2fr 2fr 70px; gap: 8px; margin: 8px 0; }
+@media (max-width: 700px) { .want-fields { grid-template-columns: 1fr; } }
+#wantMsg { margin-top: 8px; }
+.item .tag.want { border-color: #e8b04a; color: #e8b04a; font-size: .7rem; padding: 0 6px; }

@@ -3,7 +3,7 @@
     <div>
       <h1>Iron Vault</h1>
       <p class="sub">Community stock for <b>ChromieCraft challenge</b> characters</p>
-      <nav class="nav"><a href="./">About &amp; addon install</a><a href="#log">Recent requests</a><a href="#inbox" id="inboxLink" hidden>Requests for you</a><a href="#share">Share your inventory</a></nav>
+      <nav class="nav"><a href="./">About &amp; addon install</a><a href="#wanted" id="wantedLink" hidden>Wanted</a><a href="#log">Recent requests</a><a href="#inbox" id="inboxLink" hidden>Requests for you</a><a href="#share">Share your inventory</a></nav>
     </div>
     <div class="stats">
       <span class="pill" id="modePill" hidden>Demo data: database not connected</span>
@@ -60,6 +60,23 @@
         <input class="search" id="search" type="search" placeholder="Search items…" aria-label="Search items">
       </div>
       <div id="catalog"></div>
+
+      <section class="frame wanted" id="wanted" aria-labelledby="wantedTitle" hidden>
+        <h2 id="wantedTitle">Wanted <span class="badge" id="wantCount" hidden></span></h2>
+        <p class="hint">Items players of this challenge set are looking for and nobody offers yet. Donors: if you have one, share it and the player can ask for it.</p>
+        <ul class="log-list" id="wantList"></ul>
+        <details id="wantForm">
+          <summary>Ask for an item nobody offers</summary>
+          <p class="hint">Find the item on <a href="https://www.wowhead.com/wotlk/items" target="_blank" rel="noopener">Wowhead</a> and paste the link of its page. It uses the character and race from Your request, and stays for 30 days.</p>
+          <div class="pair want-fields">
+            <input class="field full" id="wantLink" type="text" autocomplete="off" placeholder="wowhead.com/wotlk/item=14046/runecloth-bag" aria-label="Wowhead link or item number">
+            <input class="field full" id="wantName" type="text" maxlength="60" autocomplete="off" placeholder="Item name" aria-label="Item name">
+            <input class="field" id="wantQty" type="number" min="1" max="200" value="1" aria-label="Quantity">
+          </div>
+          <button class="btn xs" id="wantBtn" type="button">Add to Wanted</button>
+        </details>
+        <div id="wantMsg" aria-live="polite"></div>
+      </section>
 
     </main>
 

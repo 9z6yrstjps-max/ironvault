@@ -21,9 +21,9 @@
   /*ICONS_DATA*/
   /*DEMO_DATA*/
 
-  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [], inbox: null, inboxOpen: false, delivery: false, logView: 'all', mine: null, dupSig: '' };
+  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [], inbox: null, inboxOpen: false, delivery: false, logView: 'all', mine: null, dupSig: '', wants: null };
   var share = null;            // parsed export waiting to be uploaded
-  var demoVaults = [], demoLog = [];   // demo mode only
+  var demoVaults = [], demoLog = [], demoWants = [];   // demo mode only
   var $ = function (id) { return document.getElementById(id); };
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -201,6 +201,39 @@
           icon: /^[a-z0-9_]+$/.test(icon) ? icon : '' };
       }) };
   }
+  /* ---------- Wanted: items a player looks for and nobody offers yet ---------- */
+  function wantRow(v) {
+    return { id: v.id, when: v.created_at, mask: +v.mask || 0, requester: String(v.requester || ''), race: raceKey(v.race), gender: genderKey(v.gender),
+      item: parseInt(v.item_id, 10) || 0, name: String(v.name || '').slice(0, 60), qty: parseInt(v.qty, 10) || 1 };
+  }
+  // Open wants for one challenge set, newest first. Null when not available (database not migrated yet, or unreachable).
+  async function apiWants(mask) {
+    if (!LIVE) return demoWants.filter(function (w) { return !mask || w.mask === mask || w.mask === 0; });
+    var since = new Date(Date.now() - 30 * 864e5).toISOString();
+    try {
+      var r = await fetch(API_URL + '/rest/v1/wants?select=id,created_at,mask,requester,race,gender,item_id,name,qty&mask=eq.' + mask +
+        '&created_at=gte.' + encodeURIComponent(since) + '&order=created_at.desc&limit=60', { headers: headers() });
+      if (!r.ok) return null;
+      return (await r.json()).map(wantRow);
+    } catch (e) { return null; }
+  }
+  async function apiAddWant(w) {
+    if (LIVE) return rpc('add_want', { p_requester: w.requester, p_mask: w.mask, p_item: w.item, p_name: w.name, p_qty: w.qty, p_race: w.race || null, p_gender: w.gender || null });
+    var old = demoWants.filter(function (x) { return x.requester === w.requester && x.item === w.item; })[0];
+    if (old) { old.qty = w.qty; old.when = new Date().toISOString(); return { id: old.id, token: 'demo' }; }
+    var id = Date.now(); demoWants.unshift({ id: id, when: new Date().toISOString(), mask: w.mask, requester: w.requester, race: w.race, gender: w.gender, item: w.item, name: w.name, qty: w.qty });
+    return { id: id, token: 'demo' };
+  }
+  async function apiCancelWant(id, token) {
+    if (LIVE) return rpc('cancel_want', { p_id: id, p_token: token });
+    demoWants = demoWants.filter(function (x) { return x.id !== id; }); return { cancelled: true };
+  }
+  function wantTokens() { try { return JSON.parse(lsGet('ironvault.wants') || '{}') || {}; } catch (e) { return {}; } }
+  function saveWantToken(id, token) {
+    var t = wantTokens(); if (token) t[id] = token; else delete t[id];
+    Object.keys(t).sort(function (a, b) { return b - a; }).slice(40).forEach(function (k) { delete t[k]; });
+    lsSet('ironvault.wants', JSON.stringify(t));
+  }
   // Returns null when the log is not available (database not migrated yet, or unreachable).
   async function apiLogList(mask) {
     if (!LIVE) return demoLog.filter(function (r) { return r.mask === mask || r.mask === 0; });
@@ -310,6 +343,8 @@
     too_many_new_vaults: 'Too many new lists were created in the last hour. Try again later.',
     not_found: 'There is no list for this character.',
     request_not_found: 'That request is no longer in the log.',
+    invalid_item: 'That does not look like an item. Paste its Wowhead link, or its number and its name.',
+    too_many_wants: 'You already have 10 items in Wanted. Cancel one first.',
     too_many_requests: 'Too many requests on the site in the last hour. Try again later.',
     already_delivered: 'The donor already marked this request as delivered, so it stays in the log.',
     network: 'The vault could not be reached. Check your connection and try again.'
@@ -334,6 +369,10 @@
       { character: 'Saronite', mask: 0, note: 'Demo donor', race: 'bloodelf', gender: 'female', cls: 'mage', level: 61, updated_at: new Date(now - 4 * 864e5).toISOString(), items: b, code: '' }
     ];
     var pick = function (list, i, qty) { var it = list[i % list.length]; return { id: it.id, qty: qty, q: it.q, name: it.name, icon: it.icon }; };
+    demoWants = [
+      { id: 3, when: new Date(Date.now() - 3 * 36e5).toISOString(), mask: 0, requester: 'Tundrawolf', race: 'tauren', gender: 'male', item: 14046, name: 'Runecloth Bag', qty: 2 },
+      { id: 4, when: new Date(Date.now() - 2 * 864e5).toISOString(), mask: 0, requester: 'Elunara', race: 'nightelf', gender: 'female', item: 4306, name: 'Silk Cloth', qty: 20 }
+    ];
     demoLog = [
       { id: 2, delivered: '', mask: 0, when: new Date(now - 25 * 6e4).toISOString(), requester: 'Tundrawolf', race: 'tauren', gender: 'male', donor: 'Frostmule', donorRace: 'dwarf', donorGender: 'male', items: [pick(a, 0, 5), pick(a, 9, 2)] },
       { id: 1, delivered: new Date(now - 5 * 36e5).toISOString(), mask: 0, when: new Date(now - 7 * 36e5).toISOString(), requester: 'Elunara', race: 'nightelf', gender: 'female', donor: 'Saronite', donorRace: 'bloodelf', donorGender: 'female', items: [pick(b, 2, 10)] }
@@ -508,6 +547,7 @@
           el('a', { class: 'nm q' + a.q, href: url, target: '_blank', rel: 'noopener', text: a.name }),
           el('span', { class: 'holders', title: a.holders.map(function (h) { return h.who + ': updated ' + agoFine(h.when); }).join('\n') },
             [on ? dot() : null, document.createTextNode(donors)]),
+          wantedBy(a.id).length ? el('span', { class: 'tag want', title: 'Wanted by ' + wantedBy(a.id).map(function (w) { return w.requester; }).join(', '), text: 'wanted' }) : null,
           el('button', { class: 'btn sm', type: 'button', 'aria-label': 'Add ' + a.name + ' to request', text: '+', on: { click: function () { addToCart(a.key); } } })
         ]));
       });
@@ -519,7 +559,85 @@
     if (!order.length) root.appendChild(el('p', { class: 'empty', text: !state.mask ? 'Tick your challenges above.'
       : f ? 'No item matches "' + state.filter + '"' + (only ? ' in ' + only + "'s list." : '.')
       : 'Nobody running ' + modeName(state.mask) + ' has shared an inventory yet. Be the first: press Share your inventory on the right.' }));
+    if (state.mask && state.wants !== null && (f || !order.length)) root.appendChild(el('p', { class: 'hint' }, [
+      document.createTextNode("Can't find what you need? "),
+      el('a', { href: '#wanted', text: 'Add it to Wanted', on: { click: function () { $('wantForm').open = true; } } }),
+      document.createTextNode(' so donors know someone is looking for it.')]));
   }
+  // Wanted: one row per open want of this challenge set; shows when a donor now has the item.
+  function wantedBy(id) { return (state.wants || []).filter(function (w) { return w.item === id; }); }
+  function renderWanted() {
+    var sec = $('wanted'), ul = $('wantList');
+    $('wantedLink').hidden = state.wants === null || !state.mask;
+    sec.hidden = state.wants === null || !state.mask;
+    if (sec.hidden) return;
+    var rows = state.wants, tokens = wantTokens(); ul.textContent = '';
+    $('wantCount').textContent = rows.length ? String(rows.length) : ''; $('wantCount').hidden = !rows.length;
+    if (!rows.length) ul.appendChild(el('li', { class: 'empty', text: 'Nobody running ' + modeName(state.mask) + ' is looking for anything right now.' }));
+    rows.forEach(function (w) {
+      var url = 'https://www.wowhead.com/wotlk/item=' + w.item;
+      var have = state.items.filter(function (a) { return a.id === w.item; });
+      var stock = have.length ? have[0] : null;
+      ul.appendChild(el('li', { class: 'log-row want' + (stock ? ' instock' : '') }, [
+        el('div', { class: 'log-head' }, [
+          el('a', { class: 'wname', href: url, target: '_blank', rel: 'noopener', text: w.qty + '× ' + w.name }),
+          stock ? el('span', { class: 'tag ok', text: 'In stock' }) : null,
+          el('time', { datetime: w.when, text: agoFine(w.when) })
+        ]),
+        el('div', { class: 'row' }, [
+          el('span', { class: 'arrow', text: 'wanted by' }), whoNode(w.requester, w.race, w.gender),
+          stock ? el('span', { class: 'hint', text: 'from ' + stock.holders.map(function (h) { return h.who; }).join(', ') }) : null,
+          stock ? el('button', { class: 'btn xs', type: 'button', text: 'Add to request', on: { click: function () { addToCart(stock.key); } } }) : null,
+          tokens[w.id] ? armedButton('Cancel', function (b) { cancelWant(w, b); }) : null
+        ])
+      ]));
+    });
+  }
+  async function cancelWant(w, btn) {
+    try { await apiCancelWant(w.id, wantTokens()[w.id]); }
+    catch (e) { if (e.message !== 'request_not_found') { wantMsg(e.message === 'wrong_code' ? 'This item can no longer be removed from this browser.' : errText(e)); btn.disabled = false; return; } }
+    saveWantToken(w.id, null); loadWants();
+  }
+  function wantMsg(text, ok) { var b = $('wantMsg'); b.textContent = ''; if (text) b.appendChild(note(text, ok)); }
+  // "https://www.wowhead.com/wotlk/item=14046/runecloth-bag" -> { id: 14046, name: 'Runecloth Bag' }; a bare number gives only the id.
+  function parseWowhead(text) {
+    var t = String(text || '').trim(), m = /item=(\d+)(?:\/([a-z0-9-]+))?/i.exec(t) || /^(\d{1,6})$/.exec(t);
+    if (!m) return null;
+    var name = m[2] ? m[2].split('-').filter(Boolean).map(function (w) {
+      return /^(of|the|and|a|an|to|in|on)$/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1);
+    }).join(' ') : '';
+    if (name) name = name.charAt(0).toUpperCase() + name.slice(1);
+    return { id: parseInt(m[1], 10), name: name };
+  }
+  function readWantLink() {
+    var got = parseWowhead($('wantLink').value);
+    if (got && got.name && !$('wantName').dataset.edited) $('wantName').value = got.name;
+    return got;
+  }
+  async function addWant() {
+    var got = readWantLink(), name = $('wantName').value.trim().replace(/\s+/g, ' '), qty = parseInt($('wantQty').value, 10) || 1;
+    var me = myName();
+    if (!me) return wantMsg('Enter your character name in Your request first.');
+    if (!got || !got.id) return wantMsg('Paste the item\'s Wowhead link (wowhead.com/wotlk/item=…), or its item number.');
+    if (!/^[A-Za-z0-9][A-Za-z0-9 '’:,.()-]{1,59}$/.test(name)) return wantMsg('Write the item name as it appears in game.');
+    var btn = $('wantBtn'); btn.disabled = true; wantMsg('');
+    try {
+      var race = $('myRace').value, res = await apiAddWant({ requester: me, mask: state.mask, item: got.id, name: name, qty: Math.max(1, Math.min(qty, 200)),
+        race: race, gender: race ? $('myGender').value : '' });
+      if (res && res.id && res.token) saveWantToken(res.id, res.token);
+      $('wantLink').value = ''; $('wantName').value = ''; delete $('wantName').dataset.edited; $('wantQty').value = '1';
+      wantMsg(name + ' added to Wanted. Donors of ' + modeName(state.mask) + ' will see it.', true);
+      loadWants();
+    } catch (e) { wantMsg(errText(e)); }
+    btn.disabled = false;
+  }
+  var wantSeq = 0;
+  async function loadWants() {
+    var seq = ++wantSeq, rows = state.mask ? await apiWants(state.mask) : [];
+    if (seq !== wantSeq) return;
+    state.wants = rows; renderWanted(); renderCatalog();
+  }
+
   // Donor cards above the catalog: who shares for this challenge set, with race, class, level and freshness. Clicking one filters the catalog.
   function renderDonors() {
     var box = $('donors'), names = {}, list = [];
@@ -635,6 +753,13 @@
       ]));
     });
     var okCount = results.filter(function (x) { return x.ok; }).length;
+    // Asked for now: the sender's own wants for those items are done.
+    var asked = {}; results.forEach(function (res) { if (res.ok) sent[res.who].shown.forEach(function (it) { asked[it.id] = true; }); });
+    var wt = wantTokens();
+    (state.wants || []).forEach(function (w) {
+      if (asked[w.item] && wt[w.id] && w.requester.toLowerCase() === name.toLowerCase())
+        Promise.resolve(apiCancelWant(w.id, wt[w.id])).then(function () { saveWantToken(w.id, null); loadWants(); }, function () {});
+    });
     $('doneTitle').textContent = okCount === results.length ? (okCount > 1 ? 'Requests sent' : 'Request sent') : okCount ? 'Some requests not sent' : 'Request not sent';
     $('doneText').hidden = !okCount;
     renderOrder();
@@ -1040,7 +1165,7 @@
       state.error = 'The vault could not be loaded. Check your connection and reload the page.';
     }
     state.loading = false; aggregate(); renderDonors(); renderCatalog(); renderOrder();
-    loadLog(); loadOnline(); loadInbox();
+    loadLog(); loadOnline(); loadInbox(); loadWants();
   }
 
   /* ---------- recognising characters by name ---------- */
@@ -1081,6 +1206,10 @@
   });
   $('search').addEventListener('input', function (e) { state.filter = e.target.value.trim(); renderCatalog(); });
   $('confirm').addEventListener('click', prepare);
+  $('wantBtn').addEventListener('click', addWant);
+  $('wantLink').addEventListener('input', readWantLink);
+  $('wantName').addEventListener('input', function () { $('wantName').dataset.edited = $('wantName').value ? '1' : ''; if (!$('wantName').value) delete $('wantName').dataset.edited; });
+  $('wantedLink').addEventListener('click', function () { if (!$('wanted').hidden) $('wantForm').open = $('wantForm').open || !(state.wants || []).length; });
   $('logAll').addEventListener('click', function () { state.logView = 'all'; renderLog(); });
   $('logMine').addEventListener('click', function () { state.logView = 'mine'; state.mine = null; renderLog(); loadMine(); });
   $('recipient').addEventListener('change', function () {
