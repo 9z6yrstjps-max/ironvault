@@ -177,3 +177,11 @@ details.auto p { margin: 8px 0; }
 /* Request sent: one block per donor with the items. */
 #requests .req .log-items { margin-top: 6px; }
 #requests .req.failed h3 { color: #ff8a7a; }
+
+/* Recent requests: All / Mine switch. */
+.seg { display: inline-flex; align-self: flex-start; width: max-content; border: 1px solid var(--steel); border-radius: 999px; overflow: hidden; margin: 4px 0 6px; }
+.seg button { background: none; border: 0; color: var(--mist); font: inherit; font-size: .85rem; padding: 3px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--steel); }
+.seg button[aria-pressed="true"] { background: var(--gold); color: #1a1200; font-weight: 600; }
+/* Request box: warning for a donor list not refreshed for a week. */
+.line .stale { flex-basis: 100%; color: #e8b04a; font-size: .8rem; }

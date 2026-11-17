@@ -308,6 +308,14 @@ details.auto p { margin: 8px 0; }
 /* Request sent: one block per donor with the items. */
 #requests .req .log-items { margin-top: 6px; }
 #requests .req.failed h3 { color: #ff8a7a; }
+
+/* Recent requests: All / Mine switch. */
+.seg { display: inline-flex; align-self: flex-start; width: max-content; border: 1px solid var(--steel); border-radius: 999px; overflow: hidden; margin: 4px 0 6px; }
+.seg button { background: none; border: 0; color: var(--mist); font: inherit; font-size: .85rem; padding: 3px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--steel); }
+.seg button[aria-pressed="true"] { background: var(--gold); color: #1a1200; font-weight: 600; }
+/* Request box: warning for a donor list not refreshed for a week. */
+.line .stale { flex-basis: 100%; color: #e8b04a; font-size: .8rem; }
 </style>
 </head>
 <body>
@@ -421,7 +429,7 @@ details.auto p { margin: 8px 0; }
         <div class="ccard" id="meCard" hidden></div>
       </div>
       <div>
-        <label for="myRace">Your race (filled in from your name when ChromieCraft answers)</label>
+        <label for="myRace">Your race</label>
         <div class="pair">
           <select class="field full" id="myRace"></select>
           <select class="field full" id="myGender" aria-label="Your character's sex"><option value="male">Male</option><option value="female">Female</option></select>
@@ -432,7 +440,10 @@ details.auto p { margin: 8px 0; }
     </aside>
     <section class="frame log" id="log" aria-labelledby="logTitle" hidden>
       <h2 id="logTitle">Recent requests</h2>
-      <p class="hint">What players asked for on this site. Trades happen in game: "Delivered" is the donor's own confirmation.</p>
+      <div class="seg" role="group" aria-label="Which requests">
+        <button type="button" id="logAll" aria-pressed="true">All</button><button type="button" id="logMine" aria-pressed="false">Mine</button>
+      </div>
+      <p class="hint" id="logHint">What players asked for on this site. Trades happen in game: "Delivered" is the donor's own confirmation.</p>
       <ul class="log-list" id="logList"></ul>
     </section>
     </div>
@@ -506,7 +517,7 @@ details.auto p { margin: 8px 0; }
 
 <dialog id="done" aria-labelledby="doneTitle">
   <h2 id="doneTitle">Request sent</h2>
-  <p id="doneText">Each donor finds it waiting on this site and sends the items by in-game mail, usually the next time they log in. Nothing to whisper. Changed your mind? Cancel it from Recent requests, in this browser.</p>
+  <p id="doneText">Each donor finds it waiting on this site and sends the items by in-game mail, usually the next time they log in. Nothing to whisper. Follow it in Recent requests, Mine: it turns Delivered when the items are on their way. Changed your mind? Cancel it there, from this browser.</p>
   <div id="requests"></div>
   <div class="row"><button class="btn ghost" id="closeBtn" type="button">Close</button></div>
 </dialog>
@@ -521,7 +532,7 @@ details.auto p { margin: 8px 0; }
   var API_URL = String(CFG.supabaseUrl || '').replace(/\/+$/, ''), API_KEY = String(CFG.supabaseAnonKey || '');
   var LIVE = !!(API_URL && API_KEY);
   var MAX_AGE_DAYS = CFG.maxAgeDays || 30;
-  var MAX_LINES = 8, MAX_QTY = 60, INBOX_DAYS = 30;
+  var MAX_LINES = 8, MAX_QTY = 60, INBOX_DAYS = 30, STALE_DAYS = 7;
   var MODES = [[1, 'Hardcore'], [2, 'Ironman'], [4, 'Bloodthirsty']];
   var NO_GEAR_SLOTS = { '': 1, INVTYPE_BAG: 1, INVTYPE_AMMO: 1, INVTYPE_QUIVER: 1 };
   var ICON_CDN = 'https://wow.zamimg.com/images/wow/icons/large/';
@@ -564,7 +575,7 @@ details.auto p { margin: 8px 0; }
   '858=inv_potion_50,929=inv_potion_51,1710=inv_potion_52,3928=inv_potion_53,6149=inv_potion_73,5633=inv_potion_21,12190=inv_potion_83,9155=inv_potion_30,10592=inv_potion_36,13453=inv_potion_59,9233=inv_potion_53,3012=inv_scroll_02,10309=inv_scroll_02,27498=inv_scroll_02,955=inv_scroll_01,8932=inv_misc_food_37,4457=inv_misc_food_18,2888=inv_misc_food_48,27657=inv_misc_food_86_basilisk,3220=inv_misc_food_49,5525=inv_misc_shell_02,2304=inv_misc_armorkit_17,2313=inv_misc_armorkit_15,4265=inv_misc_armorkit_16,6043=inv_misc_orb_01,2581=inv_misc_bandage_18,3531=inv_misc_bandage_17,6451=inv_misc_bandage_02,8545=inv_misc_bandage_20,6452=inv_misc_slime_01,6811=inv_misc_spyglass_01,9312=spell_ice_magicdamage,5206=inv_misc_herb_07,5765=inv_misc_bag_07_black,856=inv_misc_bag_05,4498=inv_misc_bag_09,5573=inv_misc_bag_03,4560=inv_sword_24,2488=inv_sword_20,1411=inv_staff_02,3026=inv_weapon_bow_02,5347=inv_wand_04,6256=inv_fishingpole_02,14169=inv_shoulder_06,14157=inv_shoulder_06,14126=inv_shoulder_09,6566=inv_shoulder_13,10405=inv_shoulder_27,15313=inv_shoulder_08,4700=inv_shoulder_08,6588=inv_shoulder_27,1793=inv_shoulder_06,15496=inv_shoulder_23,4694=inv_shoulder_28,6579=inv_shoulder_27,15505=inv_shoulder_27,10407=inv_shoulder_23,14728=inv_shoulder_07,3030=inv_ammo_arrow_02,8067=inv_ammo_bullet_02,8068=inv_ammo_bullet_02,4382=inv_gizmo_bronzeframework_01,4371=inv_gizmo_pipe_01,4364=inv_misc_dust_02,4363=inv_gizmo_03,4370=inv_misc_bomb_01,4852=inv_misc_ammo_bullet_01,4405=inv_misc_spyglass_02,4406=inv_misc_spyglass_02,2996=inv_fabric_linen_02,2997=inv_fabric_wool_03,4305=inv_fabric_silk_03,4339=inv_fabric_mageweave_03,14256=inv_fabric_felrag,33567=inv_misc_leatherscrap_16,33568=inv_misc_leatherscrap_15,7286=inv_misc_monsterscales_03,15416=inv_misc_monsterscales_07,25699=inv_misc_leatherscrap_12,2841=inv_ingot_bronze,3857=inv_ore_tin_01,2836=inv_stone_09,12365=inv_misc_stonetablet_07,12644=inv_stone_grindingstone_05,11370=inv_ore_mithril_01,3173=inv_misc_food_71,3730=inv_misc_food_14,35562=inv_misc_food_13,27669=inv_misc_food_70,27422=inv_misc_fish_37,3172=inv_misc_organ_05,2450=inv_misc_root_01,8836=inv_misc_herb_13,13463=inv_misc_herb_dreamfoil,22710=inv_misc_herb_11,22790=inv_misc_herb_ancientlichen,37921=inv_misc_herb_constrictorgrass,7067=inv_ore_iron_01,7068=spell_fire_fire,7069=spell_nature_tranquility,7075=inv_stone_05,7081=spell_nature_cyclone,37704=inv_elemental_crystal_life,17056=inv_feather_04,17057=inv_misc_monsterscales_08,17058=inv_potion_64'
     .split(',').forEach(function (p) { var a = p.split('='); DEMO_ICON[a[0]] = a[1]; });
 
-  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [], inbox: null, inboxOpen: false, delivery: false };
+  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [], inbox: null, inboxOpen: false, delivery: false, logView: 'all', mine: null, dupSig: '' };
   var share = null;            // parsed export waiting to be uploaded
   var demoVaults = [], demoLog = [];   // demo mode only
   var $ = function (id) { return document.getElementById(id); };
@@ -656,6 +667,8 @@ details.auto p { margin: 8px 0; }
     var names = MODES.filter(function (m) { return mask & m[0]; }).map(function (m) { return m[1]; });
     return names.join(' + ') + ' (' + names.length + '/3)';
   }
+  function daysOld(iso) { return Math.floor((Date.now() - new Date(iso).getTime()) / 864e5); }
+  function stale(iso) { return daysOld(iso) >= STALE_DAYS; }
   function ago(iso) {
     var d = Math.floor((Date.now() - new Date(iso).getTime()) / 864e5);
     return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago';
@@ -751,6 +764,17 @@ details.auto p { margin: 8px 0; }
       state.delivery = r.ok;
       // Database not migrated yet (no delivered_at column): read the original columns.
       if (!r.ok) r = await fetch(API_URL + '/rest/v1/requests?select=' + cols + q, { headers: headers() });
+      if (!r.ok) return null;
+      return (await r.json()).map(logRow);
+    } catch (e) { return null; }
+  }
+  // Requests made by one character (all challenge sets), newest first. Null when not available.
+  async function apiMine(name) {
+    if (!name) return [];
+    if (!LIVE) return demoLog.filter(function (r) { return r.requester.toLowerCase() === name.toLowerCase(); });
+    try {
+      var r = await fetch(API_URL + '/rest/v1/requests?select=id,delivered_at,created_at,requester,race,gender,donor,donor_race,donor_gender,items' +
+        '&requester=eq.' + encodeURIComponent(cleanName(name)) + '&order=created_at.desc&limit=30', { headers: headers() });
       if (!r.ok) return null;
       return (await r.json()).map(logRow);
     } catch (e) { return null; }
@@ -1078,17 +1102,22 @@ details.auto p { margin: 8px 0; }
   }
   function renderOrder() {
     var ul = $('lines'), keys = Object.keys(state.cart); ul.textContent = '';
+    if (state.dupSig && !sending) { state.dupSig = ''; $('confirm').textContent = 'Send request'; }
     keys.forEach(function (k) {
       var a = byKey(k), line = state.cart[k]; if (!a) return;
       var from;
       if (a.holders.length > 1) {
         from = el('select', { 'aria-label': 'Donor for ' + a.name, on: { change: function (e) { line.who = e.target.value; line.qty = Math.min(line.qty, maxFor(a, line.who)); renderOrder(); } } },
           a.holders.map(function (h) {
-            var o = el('option', { value: h.who, text: h.who + ' has ' + h.count + (isOnline(h.who) ? ' · online now' : ' · updated ' + ago(h.when)) });
+            var o = el('option', { value: h.who, text: h.who + ' has ' + h.count + (isOnline(h.who) ? ' · online now' : ' · updated ' + ago(h.when) + (stale(h.when) ? ' (may be gone)' : '')) });
             if (h.who === line.who) o.selected = true; return o;
           }));
       } else from = el('span', { class: 'from' }, [document.createTextNode('from ' + line.who + ' · '),
         isOnline(line.who) ? dot() : null, document.createTextNode(isOnline(line.who) ? 'online now' : 'updated ' + ago(a.holders[0].when))]);
+      // A list not refreshed for a week may no longer have the item.
+      var hw = a.holders.filter(function (h) { return h.who === line.who; })[0];
+      var old = hw && !isOnline(line.who) && stale(hw.when)
+        ? el('span', { class: 'stale', text: line.who + "'s list is " + daysOld(hw.when) + ' days old: this item may be gone.' }) : null;
       ul.appendChild(el('li', { class: 'line' }, [
         el('span', { class: 'mini' }, [iconNode(a, glyph(a.cat))]),
         el('span', { class: 'nm q' + a.q, text: a.name }),
@@ -1096,7 +1125,7 @@ details.auto p { margin: 8px 0; }
         el('span', { class: 'qty', text: String(line.qty) }),
         el('button', { class: 'btn ghost sm', type: 'button', 'aria-label': 'One more ' + a.name, text: '+', on: { click: function () { setQty(k, line.qty + 1); } } }),
         el('button', { class: 'btn ghost sm', type: 'button', 'aria-label': 'Remove ' + a.name, text: '×', on: { click: function () { setQty(k, 0); } } }),
-        from
+        from, old
       ]));
     });
     $('emptyHint').hidden = keys.length > 0;
@@ -1123,7 +1152,25 @@ details.auto p { margin: 8px 0; }
       sent[line.who].keys.push(k);
     });
     if (!order.length) return notify('Every item in this request is from your own list.');
-    var btn = $('confirm'); sending = true; btn.disabled = true; btn.textContent = 'Sending…'; notify('');
+    var btn = $('confirm');
+    // Same item already waiting with the same donor: say so once; a second press sends anyway.
+    sending = true; btn.disabled = true;
+    var mine = await apiMine(name);
+    sending = false; btn.disabled = false;
+    var dups = [];
+    (mine || []).forEach(function (r) {
+      if (r.delivered || !sent[r.donor]) return;
+      sent[r.donor].shown.forEach(function (it) {
+        if (r.items.some(function (x) { return x.id === it.id; })) dups.push(it.name + ' from ' + r.donor + ' (asked ' + agoFine(r.when) + ')');
+      });
+    });
+    var sig = name + '|' + dups.join(';');
+    if (dups.length && state.dupSig !== sig) {
+      state.dupSig = sig; btn.textContent = 'Send anyway';
+      return notify('You already have a request waiting for ' + dups.join(', ') + '. Press Send anyway to ask again, or cancel the old one in Recent requests, Mine.');
+    }
+    state.dupSig = '';
+    sending = true; btn.disabled = true; btn.textContent = 'Sending…'; notify('');
     var results = await Promise.all(order.map(function (who) {
       return Promise.resolve(apiLog({ requester: name, donor: who, items: sent[who].ids, shown: sent[who].shown, race: race, gender: gender }))
         .then(function (res) { if (res && res.id && res.token) saveToken(res.id, res.token); return { who: who, ok: true }; },
@@ -1146,23 +1193,34 @@ details.auto p { margin: 8px 0; }
     $('doneText').hidden = !okCount;
     renderOrder();
     var d = $('done'); if (d.showModal) d.showModal(); else d.setAttribute('open', '');
-    loadLog(); loadInbox();
+    loadLog(); loadInbox(); loadMine();
   }
 
   /* ---------- request log ---------- */
+  function myName() { var n = ($('recipient').value || '').trim() || lsGet('ironvault.me') || ''; return validName(n) ? cleanName(n) : ''; }
   function renderLog() {
     var sec = $('log'), ul = $('logList'); ul.textContent = '';
     if (state.log === null || !state.mask) { sec.hidden = true; return; }
     sec.hidden = false;
-    if (!state.log.length) return ul.appendChild(el('li', { class: 'empty', text: 'No requests yet for ' + modeName(state.mask) + '.' }));
+    var me = myName(), mineView = state.logView === 'mine';
+    $('logAll').setAttribute('aria-pressed', String(!mineView)); $('logMine').setAttribute('aria-pressed', String(mineView));
+    $('logMine').textContent = me ? 'Mine (' + me + ')' : 'Mine';
+    $('logHint').textContent = mineView
+      ? 'Your requests, for every challenge set. "Delivered" means the donor has sent the items: check your mailbox.'
+      : 'What players asked for on this site. Trades happen in game: "Delivered" is the donor\'s own confirmation.';
+    var rows = mineView ? state.mine : state.log;
+    if (mineView && !me) return ul.appendChild(el('li', { class: 'empty', text: 'Enter your character name in Your request to see your requests.' }));
+    if (rows === null) return ul.appendChild(el('li', { class: 'empty', text: mineView ? 'Loading your requests…' : 'Requests could not be loaded.' }));
+    if (!rows.length) return ul.appendChild(el('li', { class: 'empty', text: mineView ? 'No requests from ' + me + ' yet.' : 'No requests yet for ' + modeName(state.mask) + '.' }));
     var tokens = myTokens();
-    state.log.forEach(function (r) {
+    rows.forEach(function (r) {
       var t = el('time', { datetime: r.when, text: agoFine(r.when) });
       var mine = r.id && tokens[r.id] && !r.delivered ? el('div', { class: 'row' }, [armedButton('Cancel request', function (b) { cancelMine(r, b); }),
         el('span', { class: 'hint', text: 'Your request, still waiting.' })]) : null;
       ul.appendChild(el('li', { class: 'log-row' }, [
         el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender), el('span', { class: 'arrow', text: 'asked' }),
-          whoNode(r.donor, r.donorRace, r.donorGender, (vaultByName(r.donor) || {}).cls), r.delivered ? el('span', { class: 'tag ok', text: 'Delivered' }) : null, t]),
+          whoNode(r.donor, r.donorRace, r.donorGender, (vaultByName(r.donor) || {}).cls),
+          r.delivered ? el('span', { class: 'tag ok', text: 'Delivered' }) : mineView ? el('span', { class: 'tag', text: 'Waiting' }) : null, t]),
         itemsNode(r), mine
       ]));
     });
@@ -1180,10 +1238,19 @@ details.auto p { margin: 8px 0; }
     }));
   }
   var logSeq = 0;
+  var mineSeq = 0;
+  async function loadMine() {
+    var seq = ++mineSeq, me = myName();
+    var rows = me ? await apiMine(me) : [];
+    if (seq !== mineSeq) return rows;
+    state.mine = rows; if (state.logView === 'mine') renderLog();
+    return rows;
+  }
   async function loadLog() {
     var seq = ++logSeq, rows = state.mask ? await apiLogList(state.mask) : [];
     if (seq !== logSeq) return;
     state.log = rows; renderLog(); renderInbox();
+    if (state.logView === 'mine') loadMine();
   }
 
   /* ---------- donor inbox: requests waiting for the characters this browser holds a vault code for ---------- */
@@ -1568,6 +1635,12 @@ details.auto p { margin: 8px 0; }
   });
   $('search').addEventListener('input', function (e) { state.filter = e.target.value.trim(); renderCatalog(); });
   $('confirm').addEventListener('click', prepare);
+  $('logAll').addEventListener('click', function () { state.logView = 'all'; renderLog(); });
+  $('logMine').addEventListener('click', function () { state.logView = 'mine'; state.mine = null; renderLog(); loadMine(); });
+  $('recipient').addEventListener('change', function () {
+    if (state.dupSig) { state.dupSig = ''; $('confirm').textContent = 'Send request'; }
+    if (state.logView === 'mine') { state.mine = null; renderLog(); loadMine(); } else renderLog();
+  });
   var shareDlg = $('share');
   function openShare(e) { if (e) e.preventDefault(); if (shareDlg.open) return; if (shareDlg.showModal) shareDlg.showModal(); else shareDlg.setAttribute('open', ''); }
   $('shareOpen').addEventListener('click', openShare);

@@ -4,7 +4,7 @@
   var API_URL = String(CFG.supabaseUrl || '').replace(/\/+$/, ''), API_KEY = String(CFG.supabaseAnonKey || '');
   var LIVE = !!(API_URL && API_KEY);
   var MAX_AGE_DAYS = CFG.maxAgeDays || 30;
-  var MAX_LINES = 8, MAX_QTY = 60, INBOX_DAYS = 30;
+  var MAX_LINES = 8, MAX_QTY = 60, INBOX_DAYS = 30, STALE_DAYS = 7;
   var MODES = [[1, 'Hardcore'], [2, 'Ironman'], [4, 'Bloodthirsty']];
   var NO_GEAR_SLOTS = { '': 1, INVTYPE_BAG: 1, INVTYPE_AMMO: 1, INVTYPE_QUIVER: 1 };
   var ICON_CDN = 'https://wow.zamimg.com/images/wow/icons/large/';
@@ -21,7 +21,7 @@
   /*ICONS_DATA*/
   /*DEMO_DATA*/
 
-  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [], inbox: null, inboxOpen: false, delivery: false };
+  var state = { mask: 3, vaults: [], items: [], cart: {}, filter: '', loading: true, error: '', donor: '', log: null, online: null, fallen: {}, hidden: [], inbox: null, inboxOpen: false, delivery: false, logView: 'all', mine: null, dupSig: '' };
   var share = null;            // parsed export waiting to be uploaded
   var demoVaults = [], demoLog = [];   // demo mode only
   var $ = function (id) { return document.getElementById(id); };
@@ -113,6 +113,8 @@
     var names = MODES.filter(function (m) { return mask & m[0]; }).map(function (m) { return m[1]; });
     return names.join(' + ') + ' (' + names.length + '/3)';
   }
+  function daysOld(iso) { return Math.floor((Date.now() - new Date(iso).getTime()) / 864e5); }
+  function stale(iso) { return daysOld(iso) >= STALE_DAYS; }
   function ago(iso) {
     var d = Math.floor((Date.now() - new Date(iso).getTime()) / 864e5);
     return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago';
@@ -208,6 +210,17 @@
       state.delivery = r.ok;
       // Database not migrated yet (no delivered_at column): read the original columns.
       if (!r.ok) r = await fetch(API_URL + '/rest/v1/requests?select=' + cols + q, { headers: headers() });
+      if (!r.ok) return null;
+      return (await r.json()).map(logRow);
+    } catch (e) { return null; }
+  }
+  // Requests made by one character (all challenge sets), newest first. Null when not available.
+  async function apiMine(name) {
+    if (!name) return [];
+    if (!LIVE) return demoLog.filter(function (r) { return r.requester.toLowerCase() === name.toLowerCase(); });
+    try {
+      var r = await fetch(API_URL + '/rest/v1/requests?select=id,delivered_at,created_at,requester,race,gender,donor,donor_race,donor_gender,items' +
+        '&requester=eq.' + encodeURIComponent(cleanName(name)) + '&order=created_at.desc&limit=30', { headers: headers() });
       if (!r.ok) return null;
       return (await r.json()).map(logRow);
     } catch (e) { return null; }
@@ -535,17 +548,22 @@
   }
   function renderOrder() {
     var ul = $('lines'), keys = Object.keys(state.cart); ul.textContent = '';
+    if (state.dupSig && !sending) { state.dupSig = ''; $('confirm').textContent = 'Send request'; }
     keys.forEach(function (k) {
       var a = byKey(k), line = state.cart[k]; if (!a) return;
       var from;
       if (a.holders.length > 1) {
         from = el('select', { 'aria-label': 'Donor for ' + a.name, on: { change: function (e) { line.who = e.target.value; line.qty = Math.min(line.qty, maxFor(a, line.who)); renderOrder(); } } },
           a.holders.map(function (h) {
-            var o = el('option', { value: h.who, text: h.who + ' has ' + h.count + (isOnline(h.who) ? ' · online now' : ' · updated ' + ago(h.when)) });
+            var o = el('option', { value: h.who, text: h.who + ' has ' + h.count + (isOnline(h.who) ? ' · online now' : ' · updated ' + ago(h.when) + (stale(h.when) ? ' (may be gone)' : '')) });
             if (h.who === line.who) o.selected = true; return o;
           }));
       } else from = el('span', { class: 'from' }, [document.createTextNode('from ' + line.who + ' · '),
         isOnline(line.who) ? dot() : null, document.createTextNode(isOnline(line.who) ? 'online now' : 'updated ' + ago(a.holders[0].when))]);
+      // A list not refreshed for a week may no longer have the item.
+      var hw = a.holders.filter(function (h) { return h.who === line.who; })[0];
+      var old = hw && !isOnline(line.who) && stale(hw.when)
+        ? el('span', { class: 'stale', text: line.who + "'s list is " + daysOld(hw.when) + ' days old: this item may be gone.' }) : null;
       ul.appendChild(el('li', { class: 'line' }, [
         el('span', { class: 'mini' }, [iconNode(a, glyph(a.cat))]),
         el('span', { class: 'nm q' + a.q, text: a.name }),
@@ -553,7 +571,7 @@
         el('span', { class: 'qty', text: String(line.qty) }),
         el('button', { class: 'btn ghost sm', type: 'button', 'aria-label': 'One more ' + a.name, text: '+', on: { click: function () { setQty(k, line.qty + 1); } } }),
         el('button', { class: 'btn ghost sm', type: 'button', 'aria-label': 'Remove ' + a.name, text: '×', on: { click: function () { setQty(k, 0); } } }),
-        from
+        from, old
       ]));
     });
     $('emptyHint').hidden = keys.length > 0;
@@ -580,7 +598,25 @@
       sent[line.who].keys.push(k);
     });
     if (!order.length) return notify('Every item in this request is from your own list.');
-    var btn = $('confirm'); sending = true; btn.disabled = true; btn.textContent = 'Sending…'; notify('');
+    var btn = $('confirm');
+    // Same item already waiting with the same donor: say so once; a second press sends anyway.
+    sending = true; btn.disabled = true;
+    var mine = await apiMine(name);
+    sending = false; btn.disabled = false;
+    var dups = [];
+    (mine || []).forEach(function (r) {
+      if (r.delivered || !sent[r.donor]) return;
+      sent[r.donor].shown.forEach(function (it) {
+        if (r.items.some(function (x) { return x.id === it.id; })) dups.push(it.name + ' from ' + r.donor + ' (asked ' + agoFine(r.when) + ')');
+      });
+    });
+    var sig = name + '|' + dups.join(';');
+    if (dups.length && state.dupSig !== sig) {
+      state.dupSig = sig; btn.textContent = 'Send anyway';
+      return notify('You already have a request waiting for ' + dups.join(', ') + '. Press Send anyway to ask again, or cancel the old one in Recent requests, Mine.');
+    }
+    state.dupSig = '';
+    sending = true; btn.disabled = true; btn.textContent = 'Sending…'; notify('');
     var results = await Promise.all(order.map(function (who) {
       return Promise.resolve(apiLog({ requester: name, donor: who, items: sent[who].ids, shown: sent[who].shown, race: race, gender: gender }))
         .then(function (res) { if (res && res.id && res.token) saveToken(res.id, res.token); return { who: who, ok: true }; },
@@ -603,23 +639,34 @@
     $('doneText').hidden = !okCount;
     renderOrder();
     var d = $('done'); if (d.showModal) d.showModal(); else d.setAttribute('open', '');
-    loadLog(); loadInbox();
+    loadLog(); loadInbox(); loadMine();
   }
 
   /* ---------- request log ---------- */
+  function myName() { var n = ($('recipient').value || '').trim() || lsGet('ironvault.me') || ''; return validName(n) ? cleanName(n) : ''; }
   function renderLog() {
     var sec = $('log'), ul = $('logList'); ul.textContent = '';
     if (state.log === null || !state.mask) { sec.hidden = true; return; }
     sec.hidden = false;
-    if (!state.log.length) return ul.appendChild(el('li', { class: 'empty', text: 'No requests yet for ' + modeName(state.mask) + '.' }));
+    var me = myName(), mineView = state.logView === 'mine';
+    $('logAll').setAttribute('aria-pressed', String(!mineView)); $('logMine').setAttribute('aria-pressed', String(mineView));
+    $('logMine').textContent = me ? 'Mine (' + me + ')' : 'Mine';
+    $('logHint').textContent = mineView
+      ? 'Your requests, for every challenge set. "Delivered" means the donor has sent the items: check your mailbox.'
+      : 'What players asked for on this site. Trades happen in game: "Delivered" is the donor\'s own confirmation.';
+    var rows = mineView ? state.mine : state.log;
+    if (mineView && !me) return ul.appendChild(el('li', { class: 'empty', text: 'Enter your character name in Your request to see your requests.' }));
+    if (rows === null) return ul.appendChild(el('li', { class: 'empty', text: mineView ? 'Loading your requests…' : 'Requests could not be loaded.' }));
+    if (!rows.length) return ul.appendChild(el('li', { class: 'empty', text: mineView ? 'No requests from ' + me + ' yet.' : 'No requests yet for ' + modeName(state.mask) + '.' }));
     var tokens = myTokens();
-    state.log.forEach(function (r) {
+    rows.forEach(function (r) {
       var t = el('time', { datetime: r.when, text: agoFine(r.when) });
       var mine = r.id && tokens[r.id] && !r.delivered ? el('div', { class: 'row' }, [armedButton('Cancel request', function (b) { cancelMine(r, b); }),
         el('span', { class: 'hint', text: 'Your request, still waiting.' })]) : null;
       ul.appendChild(el('li', { class: 'log-row' }, [
         el('div', { class: 'log-head' }, [whoNode(r.requester, r.race, r.gender), el('span', { class: 'arrow', text: 'asked' }),
-          whoNode(r.donor, r.donorRace, r.donorGender, (vaultByName(r.donor) || {}).cls), r.delivered ? el('span', { class: 'tag ok', text: 'Delivered' }) : null, t]),
+          whoNode(r.donor, r.donorRace, r.donorGender, (vaultByName(r.donor) || {}).cls),
+          r.delivered ? el('span', { class: 'tag ok', text: 'Delivered' }) : mineView ? el('span', { class: 'tag', text: 'Waiting' }) : null, t]),
         itemsNode(r), mine
       ]));
     });
@@ -637,10 +684,19 @@
     }));
   }
   var logSeq = 0;
+  var mineSeq = 0;
+  async function loadMine() {
+    var seq = ++mineSeq, me = myName();
+    var rows = me ? await apiMine(me) : [];
+    if (seq !== mineSeq) return rows;
+    state.mine = rows; if (state.logView === 'mine') renderLog();
+    return rows;
+  }
   async function loadLog() {
     var seq = ++logSeq, rows = state.mask ? await apiLogList(state.mask) : [];
     if (seq !== logSeq) return;
     state.log = rows; renderLog(); renderInbox();
+    if (state.logView === 'mine') loadMine();
   }
 
   /* ---------- donor inbox: requests waiting for the characters this browser holds a vault code for ---------- */
@@ -1025,6 +1081,12 @@
   });
   $('search').addEventListener('input', function (e) { state.filter = e.target.value.trim(); renderCatalog(); });
   $('confirm').addEventListener('click', prepare);
+  $('logAll').addEventListener('click', function () { state.logView = 'all'; renderLog(); });
+  $('logMine').addEventListener('click', function () { state.logView = 'mine'; state.mine = null; renderLog(); loadMine(); });
+  $('recipient').addEventListener('change', function () {
+    if (state.dupSig) { state.dupSig = ''; $('confirm').textContent = 'Send request'; }
+    if (state.logView === 'mine') { state.mine = null; renderLog(); loadMine(); } else renderLog();
+  });
   var shareDlg = $('share');
   function openShare(e) { if (e) e.preventDefault(); if (shareDlg.open) return; if (shareDlg.showModal) shareDlg.showModal(); else shareDlg.setAttribute('open', ''); }
   $('shareOpen').addEventListener('click', openShare);
