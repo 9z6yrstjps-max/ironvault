@@ -1,4 +1,4 @@
--- IronVault 0.5 (WoW 3.3.5a)
+-- IronVault 0.5.1 (WoW 3.3.5a)
 -- Read-only: it scans bags and bank and keeps the result as text, shown by /ivault and saved with the
 -- addon's settings. It never moves items, sends mail or presses anything for you.
 --
@@ -13,7 +13,10 @@
 --
 -- Saved settings (WTF/Account/<account>/SavedVariables/IronVault.lua), written by the game at logout or /reload:
 --   IronVaultDB.chars[character] = { export = <text above>, bank = <items seen in the bank>, bankSeen = <date>,
---                                    bankTime = <same, as a number>, sent = <list of things sent> }
+--                                    bankTime = <same, as a number>, sent = <list of things sent>,
+--                                    bags = <items seen in the bags while playing> }
+-- At logout the game may already have emptied the bags, so the export written then uses the bags as last seen
+-- in play instead of reading them again.
 --   IronVaultDB.quiet = true turns the login reminder off (/ivault quiet)
 -- The Iron Vault site can read that file to refresh a list without copying anything.
 
@@ -72,11 +75,22 @@ local function isBound(bag, slot)
   return false
 end
 
-local function scanBag(bag, into)
+-- stats (optional) counts what was seen: used, bound (soulbound or quest), slots.
+local function scanBag(bag, into, stats)
   local slots = GetContainerNumSlots(bag) or 0
   for slot = 1, slots do
     local link = GetContainerItemLink(bag, slot)
-    if link and not isBound(bag, slot) then
+    local bound = link and isBound(bag, slot)
+    if stats then
+      stats.slots = stats.slots + 1
+      if link then
+        stats.items = stats.items + 1
+        if bound then
+          stats.bound = stats.bound + 1
+        end
+      end
+    end
+    if link and not bound then
       local _, count = GetContainerItemInfo(bag, slot)
       local id, suffix = parseLink(link)
       if id then
@@ -167,15 +181,33 @@ local function clean(s)
   return (tostring(s or ""):gsub("[%^\r\n]", " "))
 end
 
-local function buildExport()
-  local all = {}
+-- The bags as they are now. Returns the items and what was seen.
+local function scanBags()
+  local bags, stats = {}, { slots = 0, items = 0, bound = 0 }
   for bag = 0, NUM_BAG_SLOTS do
-    scanBag(bag, all)
+    scanBag(bag, bags, stats)
+  end
+  return bags, stats
+end
+
+-- atLogout: use the bags as last seen in play when the game no longer shows them.
+local function buildExport(atLogout)
+  local c = mine()
+  local bags, stats = scanBags()
+  if c then
+    if stats.items > 0 or not atLogout then
+      c.bags = bags
+    elseif c.bags then
+      bags = c.bags
+    end
+  end
+  local all = {}
+  for key, rec in pairs(bags) do
+    all[key] = { link = rec.link, count = rec.count }
   end
   if bankOpen then
     scanBank()
   end
-  local c = mine()
   local bank = c and c.bank
   if bank then
     for key, rec in pairs(bank) do
@@ -273,12 +305,12 @@ local function showExport(text)
 end
 
 -- Rebuilds the export kept in the saved settings. Errors are swallowed: this also runs at logout.
-local function saveExport()
+local function saveExport(atLogout)
   local c = mine()
   if not c then
     return
   end
-  local ok, text = pcall(buildExport)
+  local ok, text = pcall(buildExport, atLogout)
   if ok and text then
     c.export = text
   end
@@ -405,7 +437,7 @@ events:SetScript("OnEvent", function(self, event, a1, a2)
     end
     pending = 5
   elseif event == "PLAYER_LOGOUT" then
-    saveExport()
+    saveExport(true)
   elseif event == "BANKFRAME_OPENED" then
     bankOpen = true
     scanBank()
@@ -450,6 +482,36 @@ SlashCmdList["IRONVAULT"] = function(msg)
     say(IronVaultDB.quiet and "login reminders off." or "login reminders on.")
     return
   end
+  if msg == "check" then
+    -- What the addon sees, to find out why something is missing from the list.
+    local c = mine()
+    local bags, stats = scanBags()
+    local kinds = 0
+    for _ in pairs(bags) do
+      kinds = kinds + 1
+    end
+    say("bags: " .. stats.items .. " stacks seen, " .. stats.bound .. " soulbound or quest (left out), " .. kinds .. " different items kept.")
+    local bk = 0
+    if c and c.bank then
+      for _ in pairs(c.bank) do
+        bk = bk + 1
+      end
+      say("bank: " .. bk .. " different items, as seen " .. (c.bankSeen or "?") .. ".")
+    else
+      say("bank: never opened with this character.")
+    end
+    local saved = c and c.export
+    local lines = 0
+    if saved then
+      for line in saved:gmatch("[^\n]+") do
+        if not line:find("^IRONVAULT1") and not line:find("^SENT") then
+          lines = lines + 1
+        end
+      end
+    end
+    say("saved for the site: " .. lines .. " different items (bags and bank together). The site also leaves out green or better gear for Ironman.")
+    return
+  end
   if msg == "auras" then
     -- Helps to find out how the server marks challenge characters.
     local list = auraNames()
@@ -479,5 +541,5 @@ SlashCmdList["IRONVAULT"] = function(msg)
   else
     say(n .. " different items exported from bags only. Open the bank once to include it.")
   end
-  say("the same list is saved by itself when you log out; the site can read it from the addon's settings file.")
+  say("the same list is saved by itself when you log out; the site can read it from the addon's settings file. /ivault check shows what is counted.")
 end
